@@ -1,4 +1,5 @@
-    POUR OMV 7.4.17 AMDGPU tester RADEON RX 7600XT
+
+POUR OMV 7.4.17 AMDGPU tester RADEON RX 7600XT
 
         sudo apt update 
         sudo apt install -y wget unzip 
