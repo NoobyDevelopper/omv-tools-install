@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # ========== Couleurs ==========
-BLUE='\033[1;34m'       # bleu foncé pour [INFO]
-LIGHT_BLUE='\033[1;36m' # bleu clair pour texte
-GREEN='\033[1;32m'      # succès et Fait
-YELLOW='\033[1;33m'     # warning
-NC='\033[0m'             # No Color
+BLUE='\033[1;34m'
+LIGHT_BLUE='\033[1;36m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
 # ========== Fonctions de log ==========
 info()    { echo -e "${BLUE}[INFO]${NC} ${LIGHT_BLUE}$*${NC}"; }
@@ -78,14 +78,14 @@ EXTENSIONS=(
 
 for ext in "${EXTENSIONS[@]}"; do
     info "Vérification de l'extension $ext"
-    output=$(sudo apt install --only-upgrade -y "$ext" 2>&1)
+    output=$(sudo apt install -y "$ext" 2>&1)
     if echo "$output" | grep -q "est déjà la version la plus récente"; then
-        version=$(echo "$output" | grep "est déjà la version la plus récente" | awk -F'[()]' '{print $2}')
+        version=$(apt list --installed "$ext" 2>/dev/null | grep "$ext" | awk -F'/' '{print $2}')
         echo -e "${LIGHT_BLUE}$ext $version ${GREEN}Fait${NC}"
         TASKS_DONE+=("${LIGHT_BLUE}Extension $ext déjà à jour ${GREEN}Fait${NC}")
     else
-        pkg_info=$(echo "$output" | grep "^Inst" | awk '{print $2, $3}')
-        echo -e "${LIGHT_BLUE}$pkg_info ${GREEN}Fait${NC}"
+        version=$(apt list --installed "$ext" 2>/dev/null | grep "$ext" | awk -F'/' '{print $2}')
+        echo -e "${LIGHT_BLUE}$ext $version ${GREEN}Fait${NC}"
         TASKS_DONE+=("${LIGHT_BLUE}Extension $ext installée/mise à jour ${GREEN}Fait${NC}")
     fi
 done
@@ -97,12 +97,12 @@ for pkg in "${PYTHON_PKGS[@]}"; do
     info "Vérification de $pkg"
     output=$(sudo apt install -y "$pkg" 2>&1)
     if echo "$output" | grep -q "est déjà la version la plus récente"; then
-        version=$(echo "$output" | grep "est déjà la version la plus récente" | awk -F'[()]' '{print $2}')
+        version=$(apt list --installed "$pkg" 2>/dev/null | grep "$pkg" | awk -F'/' '{print $2}')
         echo -e "${LIGHT_BLUE}$pkg $version ${GREEN}Fait${NC}"
         TASKS_DONE+=("${LIGHT_BLUE}$pkg déjà à jour ${GREEN}Fait${NC}")
     else
-        pkg_info=$(echo "$output" | grep "^Inst" | awk '{print $2, $3}')
-        echo -e "${LIGHT_BLUE}$pkg_info ${GREEN}Fait${NC}"
+        version=$(apt list --installed "$pkg" 2>/dev/null | grep "$pkg" | awk -F'/' '{print $2}')
+        echo -e "${LIGHT_BLUE}$pkg $version ${GREEN}Fait${NC}"
         TASKS_DONE+=("${LIGHT_BLUE}$pkg installé/mis à jour ${GREEN}Fait${NC}")
     fi
 done
