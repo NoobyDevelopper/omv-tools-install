@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 set -euo pipefail
 
 # ========== Couleurs ==========
@@ -142,6 +142,35 @@ version=$(apt list --installed openmediavault-kvm 2>/dev/null | grep openmediava
 echo -e "${LIGHT_BLUE}openmediavault-kvm $version ${GREEN}Fait${NC}"
 TASKS_DONE+=("${LIGHT_BLUE}Extension openmediavault-kvm installée/mise à jour ${GREEN}Fait${NC}")
 
+# ---------------- OMV-Compose + Docker Compose ----------------
+info "Vérification d'OMV-Compose"
+if dpkg -l | grep -qw openmediavault-compose; then
+    info "OMV-Compose déjà installé. Mise à jour si nécessaire..."
+    sudo apt install --only-upgrade -y openmediavault-compose
+    version=$(apt list --installed openmediavault-compose 2>/dev/null | grep openmediavault-compose | awk -F'/' '{print $2}')
+    echo -e "${LIGHT_BLUE}openmediavault-compose $version ${GREEN}Fait${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}OMV-Compose mis à jour ${GREEN}Fait${NC}")
+else
+    info "OMV-Compose non installé. Installation..."
+    sudo apt install -y openmediavault-compose
+    version=$(apt list --installed openmediavault-compose 2>/dev/null | grep openmediavault-compose | awk -F'/' '{print $2}')
+    echo -e "${LIGHT_BLUE}openmediavault-compose $version ${GREEN}Fait${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}OMV-Compose installé ${GREEN}Fait${NC}")
+fi
+
+info "Vérification du plugin Docker Compose"
+if ! dpkg -l | grep -qw docker-compose-plugin; then
+    info "Docker Compose plugin non trouvé. Installation..."
+    sudo apt update && sudo apt install -y docker-compose-plugin
+    version=$(apt list --installed docker-compose-plugin 2>/dev/null | grep docker-compose-plugin | awk -F'/' '{print $2}')
+    echo -e "${LIGHT_BLUE}docker-compose-plugin $version ${GREEN}Fait${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}Docker Compose plugin installé ${GREEN}Fait${NC}")
+else
+    version=$(apt list --installed docker-compose-plugin 2>/dev/null | grep docker-compose-plugin | awk -F'/' '{print $2}')
+    echo -e "${LIGHT_BLUE}docker-compose-plugin $version ${GREEN}Fait${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}Docker Compose plugin déjà installé ${GREEN}Fait${NC}")
+fi
+
 # ---------------- Nettoyage ----------------
 info "Nettoyage des packages inutiles"
 sudo apt autoremove -y
@@ -154,4 +183,4 @@ for task in "${TASKS_DONE[@]}"; do
 done
 echo -e "${BLUE}====================================================================${NC}"
 
-success "Partie 1 terminée : OMV-Config-Base prête avec GPU ROCm et KVM"
+success "Partie 1 terminée : OMV-Config-Base prête avec GPU ROCm, KVM et Docker Compose"
