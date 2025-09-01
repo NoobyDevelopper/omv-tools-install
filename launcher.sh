@@ -22,47 +22,63 @@ echo "2) Exécuter Partie 2 : Docker-Ollama-Base"
 echo "3) Exécuter Partie 1 + Partie 2"
 echo ""
 
-choice=1
 TIMEOUT=10
-echo -n "Votre choix (défaut 1) dans $TIMEOUT secondes : "
+choice=""
 
-# Lire l'entrée utilisateur en arrière-plan
-read_choice=""
-(
-    read -r read_choice
-) &
-READ_PID=$!
+# Spinner pendant le choix utilisateur
+spinner() {
+    local i=0
+    local chars="/-\|"
+    while true; do
+        printf "\r%s %2ds " "${chars:i++%${#chars}:1}" "$TIMEOUT"
+        sleep 0.2
+    done
+}
 
-# Spinner avec compte à rebours
-spinner="/-\|"
-i=0
-for ((sec=TIMEOUT; sec>0; sec--)); do
-    if ! kill -0 "$READ_PID" 2>/dev/null; then
-        break
-    fi
-    printf "\r%s %2ds " "${spinner:i++%${#spinner}:1}" "$sec"
-    sleep 0.2
-done
+spinner &
+SPINNER_PID=$!
+
+# Lire l'entrée utilisateur avec timeout
+read -t $TIMEOUT -rp "Votre choix (défaut 1) : " choice_input
+STATUS=$?
+
+# Arrêter le spinner
+kill "$SPINNER_PID" 2>/dev/null
+wait "$SPINNER_PID" 2>/dev/null || true
 echo ""
 
-# Timeout atteint ?
-if kill -0 "$READ_PID" 2>/dev/null; then
-    kill "$READ_PID" 2>/dev/null
-    echo "[INFO] Timeout atteint. Valeur par défaut choisie : 1"
+# Déterminer le choix final
+if [ $STATUS -eq 0 ] && [ -n "$choice_input" ]; then
+    choice="$choice_input"
 else
-    [[ -n "$read_choice" ]] && choice="$read_choice"
+    choice=1
+    echo "[INFO] Timeout ou entrée vide. Valeur par défaut choisie : 1"
 fi
 
-# Fonction pour lancer un script et afficher le résumé en temps réel
+# Fonction pour lancer un script avec barre de progression en fonction du nombre de lignes
 run_script() {
     local script="$1"
     local name="$2"
     echo "===== Lancement $name ====="
 
-    # Exécution en temps réel et capture de la sortie
-    OUTPUT=$("$script" 2>&1 | tee /dev/tty)
+    local width=40
+    # Capture la sortie du script ligne par ligne
+    local lines=0
+    local total_lines=50  # Ajustable selon le script pour rendre la barre réaliste
+    "$script" 2>&1 | while IFS= read -r line; do
+        echo "$line"
+        ((lines++))
+        # Calcule pourcentage
+        local percent=$(( lines * 100 / total_lines ))
+        [ $percent -gt 100 ] && percent=100
+        # Affiche la barre
+        local done_width=$(( width * percent / 100 ))
+        printf "\r[%-${width}s] %3d%%" "$(printf '#%.0s' $(seq 1 $done_width))" "$percent"
+    done
+    echo ""
 
     # Extraction du résumé si présent
+    OUTPUT=$("$script" 2>&1 || true)
     if echo "$OUTPUT" | grep -q "==================== Résumé"; then
         echo "===== Résumé $name ====="
         echo "$OUTPUT" | awk '/==================== Résumé/,/====================================================================/'
