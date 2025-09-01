@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  whisper:
+    container_name: whisper
+    image: rhasspy/wyoming-whisper:latest
+    command: --model small --language fr
+    volumes:
+      - ./whisper-data:/data
+    environment:
+      - TZ=Europe/Paris
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:10300:10300
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: "rocm"
+              count: all
+              capabilities: ["gpu"]
+
+  piper:
+    container_name: piper
+    image: rhasspy/wyoming-piper:latest
+    command: --voice fr-siwis-medium
+    volumes:
+      - ./piper-data:/data
+    environment:
+      - TZ=Europe/Paris
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:10200:10200
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: "rocm"
+              count: all
+              capabilities: ["gpu"]
+
+networks:
+  default:
+    driver: bridge
