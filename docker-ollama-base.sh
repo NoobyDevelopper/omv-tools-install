@@ -10,7 +10,7 @@ Description :
   2. Vérification/installation du plugin Docker Compose.
   3. Définition du volume Docker pour Ollama.
   4. Fonction de gestion des conteneurs (création, mise à jour, relance automatique).
-  5. Détection automatique de l’adresse IP pour exposer Ollama sur le réseau.
+  5. Demande de l’adresse IP pour exposer Ollama sur le réseau.
   6. Déploiement du conteneur Ollama avec GPU ROCm, ports, et persistance.
 '
 
@@ -39,6 +39,10 @@ fi
 read -rp "Entrez le chemin du volume Docker pour Ollama (ex: /srv/dev-disk-by-label-DATA/docker) : " DOCKER_DATA
 mkdir -p "$DOCKER_DATA/ollama"
 
+read -rp "Entrez l'adresse IP à utiliser pour Ollama (ex: 127.0.0.1) : " IP_ADDR
+IP_ADDR=${IP_ADDR:-"127.0.0.1"}  # valeur par défaut si rien n'est entré
+info "IP utilisée pour Ollama : $IP_ADDR"
+
 update_or_restart_container() {
   local name=$1
   local image=$2
@@ -65,10 +69,6 @@ if [ "$(ls -A $DOCKER_DATA/ollama)" ]; then
 else
     info "Le répertoire $DOCKER_DATA/ollama est vide."
 fi
-
-IP_ADDR=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++){if($i=="src"){print $(i+1); exit}}}')
-[[ -z "$IP_ADDR" ]] && IP_ADDR="10.0.0.7"
-info "IP utilisée pour Ollama : $IP_ADDR"
 
 info "Mise à jour du conteneur Docker Ollama"
 update_or_restart_container "ollama" "ollama/ollama:rocm" \
