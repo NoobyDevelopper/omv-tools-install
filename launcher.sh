@@ -13,6 +13,7 @@ for script in "$SCRIPT1" "$SCRIPT2"; do
     chmod +x "$script"
 done
 
+# Menu
 echo "========================"
 echo "   Choisissez une option"
 echo "========================"
@@ -44,7 +45,7 @@ for ((sec=TIMEOUT; sec>0; sec--)); do
 done
 echo ""
 
-# Si timeout atteint, tuer le read
+# Timeout atteint ?
 if kill -0 "$READ_PID" 2>/dev/null; then
     kill "$READ_PID" 2>/dev/null
     echo "[INFO] Timeout atteint. Valeur par défaut choisie : 1"
@@ -52,19 +53,16 @@ else
     [[ -n "$read_choice" ]] && choice="$read_choice"
 fi
 
-# Fonction pour lancer un script et afficher le résumé
+# Fonction pour lancer un script et afficher le résumé en temps réel
 run_script() {
     local script="$1"
     local name="$2"
     echo "===== Lancement $name ====="
 
-    # Exécution en temps réel
-    while IFS= read -r line; do
-        echo "$line"
-    done < <("$script" 2>&1)
+    # Exécution en temps réel et capture de la sortie
+    OUTPUT=$("$script" 2>&1 | tee /dev/tty)
 
     # Extraction du résumé si présent
-    OUTPUT=$("$script" 2>&1 || true)
     if echo "$OUTPUT" | grep -q "==================== Résumé"; then
         echo "===== Résumé $name ====="
         echo "$OUTPUT" | awk '/==================== Résumé/,/====================================================================/'
@@ -72,6 +70,7 @@ run_script() {
     fi
 }
 
+# Exécution selon choix
 case "$choice" in
     1)
         run_script "$SCRIPT1" "OMV-Config-Base"
