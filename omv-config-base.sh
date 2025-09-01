@@ -84,15 +84,16 @@ TASKS_DONE+=("Python setuptools et wheel installés")
 sudo usermod -a -G render,video "$LOGNAME"
 TASKS_DONE+=("Utilisateur ajouté aux groupes render et video")
 
-# ROCm installation
-info "Installation de ROCm"
-if apt-cache show rocm=6.4.3 &>/dev/null; then
-    sudo apt install -y rocm=6.4.3
+# ROCm installation (corrigé)
+info "Installation de ROCm via le package AMD GPU"
+sudo apt install -y rocm-dkms rocm-dev rocm-utils || warn "Installation ROCm partielle, vérifier le dépôt AMD"
+
+# Vérification que ROCm est présent
+if dpkg -l | grep -qw rocm-dkms; then
+    TASKS_DONE+=("ROCm installé")
 else
-    warn "Version 6.4.3 de ROCm non trouvée dans les dépôts, installation de la dernière disponible"
-    sudo apt install -y rocm || warn "ROCm non trouvé, vérifier le dépôt AMD"
+    warn "ROCm non détecté après installation"
 fi
-TASKS_DONE+=("ROCm installé")
 
 # Vérification et installation des packages supplémentaires
 for pkg in migraphx migraphx-dev half; do
