@@ -1,118 +1,111 @@
 #!/bin/bash
-set -euo pipefail
+# launcher.sh - Menu stylé avec bordures et noms de scripts
 
-SCRIPT1="./omv-config-base.sh"
-SCRIPT2="./docker-ollama-base.sh"
+# Couleurs
+GREEN='\033[1;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-# Vérification des scripts
-for script in "$SCRIPT1" "$SCRIPT2"; do
-    if [ ! -f "$script" ]; then
-        echo "[ERROR] Le script $script est manquant !"
-        exit 1
+# Scripts à exécuter
+SCRIPT1="omv-config-base.sh"
+SCRIPT2="docker-ollama-base.sh"
+
+# Vérifier et rendre exécutable
+check_exec() {
+    local script=$1
+    if [ ! -x "$script" ]; then
+        echo -e "${YELLOW}Rendre $script exécutable...${NC}"
+        chmod +x "$script"
     fi
-    chmod +x "$script"
-done
-
-# Menu
-echo "========================"
-echo "   Choisissez une option"
-echo "========================"
-echo "1) Exécuter Partie 1 : OMV-Config-Base"
-echo "2) Exécuter Partie 2 : Docker-Ollama-Base"
-echo "3) Exécuter Partie 1 + Partie 2"
-echo ""
-
-TIMEOUT=10
-choice=""
-
-# Spinner pendant le choix utilisateur
-spinner() {
-    local i=0
-    local chars="/-\|"
-    while true; do
-        printf "\r%s %2ds " "${chars:i++%${#chars}:1}" "$TIMEOUT"
-        sleep 0.2
-    done
 }
 
-spinner &
-SPINNER_PID=$!
+# Initialiser la barre fixe
+init_progress_bar() {
+    BAR_WIDTH=$(( $(tput cols) - 10 ))  # espace pour "[| ] 100%"
+    echo -e "\n"  # espace avant barre
+    PROGRESS_ROW=$(tput lines)
+}
 
-# Lire l'entrée utilisateur avec timeout
-read -t $TIMEOUT -rp "Votre choix (défaut 1) : " choice_input
-STATUS=$?
+# Mettre à jour la barre
+update_progress_bar() {
+    local percent=$1
+    local info="$2"
+    local filled=$((BAR_WIDTH * percent / 100))
+    local empty=$((BAR_WIDTH - filled))
+    local bar=$(printf "%${filled}s" "" | tr ' ' '#')
+    local space=$(printf "%${empty}s" "")
+    # info au-dessus
+    tput sc
+    tput cup $((PROGRESS_ROW-2)) 0
+    printf "%-$(tput cols)s" "$info"
+    # barre fixe
+    tput cup $((PROGRESS_ROW-1)) 0
+    printf "[|${GREEN}%s${NC}%s] %3d%%" "$bar" "$space" "$percent"
+    tput rc
+}
 
-# Arrêter le spinner
-kill "$SPINNER_PID" 2>/dev/null
-wait "$SPINNER_PID" 2>/dev/null || true
-echo ""
-
-# Déterminer le choix final
-if [ $STATUS -eq 0 ] && [ -n "$choice_input" ]; then
-    choice="$choice_input"
-else
-    choice=1
-    echo "[INFO] Timeout ou entrée vide. Valeur par défaut choisie : 1"
-fi
-
-# Fonction pour lancer un script avec barre de progression en parallèle
+# Exécuter script avec barre et info dynamique
 run_script() {
-    local script="$1"
-    local name="$2"
-    echo "===== Lancement $name ====="
+    local script=$1
+    echo -e "${CYAN}=== Exécution de $script ===${NC}"
+    check_exec "$script"
+    init_progress_bar
+    ./"$script" &
+    pid=$!
 
-    local width=40
-    local total_lines=50  # Ajustable selon le script pour rendre la barre réaliste
-    local lines=0
-
-    # Créer un FIFO temporaire
-    tmp_fifo=$(mktemp -u)
-    mkfifo "$tmp_fifo"
-
-    # Lire le FIFO en parallèle pour afficher la barre
-    {
-        while IFS= read -r line; do
-            echo "$line"
-            ((lines++))
-            local percent=$(( lines * 100 / total_lines ))
-            [ $percent -gt 100 ] && percent=100
-            local done_width=$(( width * percent / 100 ))
-            printf "\r[%-${width}s] %3d%%" "$(printf '#%.0s' $(seq 1 $done_width))" "$percent"
-        done < "$tmp_fifo"
-        echo ""
-    } &
-
-    # Exécuter le script en envoyant sa sortie dans le FIFO
-    "$script" > "$tmp_fifo" 2>&1
-    wait
-
-    rm -f "$tmp_fifo"
-
-    # Affichage du résumé si présent
-    OUTPUT=$("$script" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "==================== Résumé"; then
-        echo "===== Résumé $name ====="
-        echo "$OUTPUT" | awk '/==================== Résumé/,/====================================================================/'
-        echo "=============================="
-    fi
+    percent=0
+    while kill -0 $pid 2>/dev/null; do
+        percent=$((percent + 2))
+        [ $percent -gt 100 ] && percent=100
+        update_progress_bar $percent "Traitement de $script en cours..."
+        sleep 0.3
+    done
+    wait $pid
+    update_progress_bar 100 "$script terminé ✅"
+    echo -e "\n"
 }
 
-# Exécution selon choix
-case "$choice" in
-    1)
-        run_script "$SCRIPT1" "OMV-Config-Base"
-        ;;
-    2)
-        run_script "$SCRIPT2" "Docker-Ollama-Base"
-        ;;
-    3)
-        run_script "$SCRIPT1" "OMV-Config-Base"
-        run_script "$SCRIPT2" "Docker-Ollama-Base"
-        ;;
-    *)
-        echo "[WARN] Choix invalide, exécution Partie 1 par défaut"
-        run_script "$SCRIPT1" "OMV-Config-Base"
-        ;;
+# Partie 1
+partie1() { run_script "$SCRIPT1"; }
+
+# Partie 2
+partie2() { run_script "$SCRIPT2"; }
+
+# Partie 1 + 2
+partie1_2() {
+    partie1
+    partie2
+}
+
+# Menu avec bordures ######### et noms des scripts
+echo -e "${YELLOW}#############################################${NC}"
+echo -e "${YELLOW}# Choisir une option (défaut Partie 1 dans 10s) #${NC}"
+echo -e "${YELLOW}#############################################${NC}"
+echo "1) Partie 1  -> $SCRIPT1"
+echo "2) Partie 2  -> $SCRIPT2"
+echo "3) Partie 1+2 -> $SCRIPT1 + $SCRIPT2"
+echo -e "${YELLOW}#############################################${NC}"
+
+# Timer 10s pour choix par défaut
+CHOIX=""
+for i in {10..1}; do
+    printf "\rSélection automatique dans %2d secondes..." "$i"
+    read -t 1 -n 1 input
+    if [ ! -z "$input" ]; then
+        CHOIX=$input
+        break
+    fi
+done
+printf "\n"
+CHOIX=${CHOIX:-1}
+
+case $CHOIX in
+    1) partie1 ;;
+    2) partie2 ;;
+    3) partie1_2 ;;
+    *) echo -e "${RED}Option invalide${NC}" ;;
 esac
 
-echo "==================== Fin du script ===================="
+echo -e "${CYAN}Script terminé! 👋${NC}"
