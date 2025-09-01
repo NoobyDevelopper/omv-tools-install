@@ -55,29 +55,40 @@ else
     echo "[INFO] Timeout ou entrée vide. Valeur par défaut choisie : 1"
 fi
 
-# Fonction pour lancer un script avec barre de progression en fonction du nombre de lignes
+# Fonction pour lancer un script avec barre de progression en parallèle
 run_script() {
     local script="$1"
     local name="$2"
     echo "===== Lancement $name ====="
 
     local width=40
-    # Capture la sortie du script ligne par ligne
-    local lines=0
     local total_lines=50  # Ajustable selon le script pour rendre la barre réaliste
-    "$script" 2>&1 | while IFS= read -r line; do
-        echo "$line"
-        ((lines++))
-        # Calcule pourcentage
-        local percent=$(( lines * 100 / total_lines ))
-        [ $percent -gt 100 ] && percent=100
-        # Affiche la barre
-        local done_width=$(( width * percent / 100 ))
-        printf "\r[%-${width}s] %3d%%" "$(printf '#%.0s' $(seq 1 $done_width))" "$percent"
-    done
-    echo ""
+    local lines=0
 
-    # Extraction du résumé si présent
+    # Créer un FIFO temporaire
+    tmp_fifo=$(mktemp -u)
+    mkfifo "$tmp_fifo"
+
+    # Lire le FIFO en parallèle pour afficher la barre
+    {
+        while IFS= read -r line; do
+            echo "$line"
+            ((lines++))
+            local percent=$(( lines * 100 / total_lines ))
+            [ $percent -gt 100 ] && percent=100
+            local done_width=$(( width * percent / 100 ))
+            printf "\r[%-${width}s] %3d%%" "$(printf '#%.0s' $(seq 1 $done_width))" "$percent"
+        done < "$tmp_fifo"
+        echo ""
+    } &
+
+    # Exécuter le script en envoyant sa sortie dans le FIFO
+    "$script" > "$tmp_fifo" 2>&1
+    wait
+
+    rm -f "$tmp_fifo"
+
+    # Affichage du résumé si présent
     OUTPUT=$("$script" 2>&1 || true)
     if echo "$OUTPUT" | grep -q "==================== Résumé"; then
         echo "===== Résumé $name ====="
