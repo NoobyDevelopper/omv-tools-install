@@ -20,7 +20,6 @@ TASKS_DONE=()
 # ---------------- Mise à jour système ----------------
 info "Mise à jour du système"
 upgrade_output=$(sudo apt upgrade -y -qq 2>&1 || true)
-
 if echo "$upgrade_output" | grep -q "^Inst"; then
     echo "$upgrade_output" | grep "^Inst" | awk '{print $2, $3}' | while read pkg ver; do
         echo -e "${LIGHT_BLUE}$pkg $ver ${GREEN}Fait${NC}"
@@ -85,13 +84,30 @@ for ext in "${EXTENSIONS[@]}"; do
         echo -e "${LIGHT_BLUE}$ext $version ${GREEN}Fait${NC}"
         TASKS_DONE+=("${LIGHT_BLUE}Extension $ext déjà à jour ${GREEN}Fait${NC}")
     else
-        pkg_info=$(echo "$output" | grep "^Inst" | awk '{print $2, $3}' )
+        pkg_info=$(echo "$output" | grep "^Inst" | awk '{print $2, $3}')
         echo -e "${LIGHT_BLUE}$pkg_info ${GREEN}Fait${NC}"
         TASKS_DONE+=("${LIGHT_BLUE}Extension $ext installée/mise à jour ${GREEN}Fait${NC}")
     fi
 done
 
-# ---------------- Installation AMD GPU ROCm ----------------
+# ---------------- Python utils ----------------
+PYTHON_PKGS=(python3-setuptools python3-wheel)
+
+for pkg in "${PYTHON_PKGS[@]}"; do
+    info "Vérification de $pkg"
+    output=$(sudo apt install -y "$pkg" 2>&1)
+    if echo "$output" | grep -q "est déjà la version la plus récente"; then
+        version=$(echo "$output" | grep "est déjà la version la plus récente" | awk -F'[()]' '{print $2}')
+        echo -e "${LIGHT_BLUE}$pkg $version ${GREEN}Fait${NC}"
+        TASKS_DONE+=("${LIGHT_BLUE}$pkg déjà à jour ${GREEN}Fait${NC}")
+    else
+        pkg_info=$(echo "$output" | grep "^Inst" | awk '{print $2, $3}')
+        echo -e "${LIGHT_BLUE}$pkg_info ${GREEN}Fait${NC}"
+        TASKS_DONE+=("${LIGHT_BLUE}$pkg installé/mis à jour ${GREEN}Fait${NC}")
+    fi
+done
+
+# ---------------- Installation AMD GPU ----------------
 DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
 DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
 
@@ -103,32 +119,19 @@ version=$(apt list --installed amdgpu-install 2>/dev/null | grep amdgpu-install 
 echo -e "${LIGHT_BLUE}amdgpu-install $version ${GREEN}Fait${NC}"
 TASKS_DONE+=("${LIGHT_BLUE}Package AMD GPU installé ${GREEN}Fait${NC}")
 
-# ---------------- Python utils ----------------
-for pkg in python3-setuptools python3-wheel; do
-    sudo apt install -y -qq "$pkg"
-    version=$(apt list --installed "$pkg" 2>/dev/null | grep "$pkg" | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}$pkg $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}$pkg installé ${GREEN}Fait${NC}")
-done
-
 # ---------------- Groupes utilisateur ----------------
 sudo usermod -a -G render,video "$LOGNAME"
 TASKS_DONE+=("${LIGHT_BLUE}Utilisateur ajouté aux groupes render et video ${GREEN}Fait${NC}")
 
 # ---------------- ROCm ----------------
-info "Installation de ROCm via le package AMD GPU"
-if ! sudo apt install -y -qq rocm-dkms rocm-dev rocm-utils; then
-    warn "Installation ROCm partielle, vérifier le dépôt AMD"
+info "Installation de ROCm via le meta-package"
+if sudo apt install -y rocm; then
+    version=$(apt list --installed rocm 2>/dev/null | grep rocm | awk -F'/' '{print $2}')
+    echo -e "${LIGHT_BLUE}rocm $version ${GREEN}Fait${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}ROCm installé ${GREEN}Fait${NC}")
+else
+    warn "ROCm non installé, vérifier le dépôt AMD"
 fi
-for pkg in rocm-dkms rocm-dev rocm-utils; do
-    if dpkg -l | grep -qw "$pkg"; then
-        version=$(apt list --installed "$pkg" 2>/dev/null | grep "$pkg" | awk -F'/' '{print $2}')
-        echo -e "${LIGHT_BLUE}$pkg $version ${GREEN}Fait${NC}"
-        TASKS_DONE+=("${LIGHT_BLUE}$pkg installé ${GREEN}Fait${NC}")
-    else
-        warn "$pkg non détecté après installation"
-    fi
-done
 
 # ---------------- Extension KVM ----------------
 info "Installation de l'extension KVM"
