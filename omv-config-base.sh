@@ -60,9 +60,19 @@ for ext in "${EXTENSIONS[@]}"; do
 done
 
 # ========== Installation AMD GPU ROCm et outils ==========
+DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
+DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
+
 info "Téléchargement et installation du package AMD GPU"
-wget https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/amdgpu-install_6.4.60403-1_all.deb
-sudo apt install -y ./amdgpu-install_6.4.60403-1_all.deb
+
+# Supprimer le fichier si déjà présent
+if [[ -f "$DEB_FILE" ]]; then
+    info "Fichier $DEB_FILE existant, suppression..."
+    rm -f "$DEB_FILE"
+fi
+
+wget "$DEB_URL" -O "$DEB_FILE"
+sudo apt install -y ./"$DEB_FILE"
 sudo apt update
 TASKS_DONE+=("Package AMD GPU installé")
 
@@ -75,10 +85,12 @@ sudo usermod -a -G render,video "$LOGNAME"
 TASKS_DONE+=("Utilisateur ajouté aux groupes render et video")
 
 # ROCm installation
+info "Installation de ROCm"
 if apt-cache show rocm=6.4.3 &>/dev/null; then
     sudo apt install -y rocm=6.4.3
 else
-    sudo apt install -y rocm
+    warn "Version 6.4.3 de ROCm non trouvée dans les dépôts, installation de la dernière disponible"
+    sudo apt install -y rocm || warn "ROCm non trouvé, vérifier le dépôt AMD"
 fi
 TASKS_DONE+=("ROCm installé")
 
@@ -133,4 +145,3 @@ done
 echo "===================================================================="
 
 success "Partie 1 terminée : OMV-Config-Base prête avec GPU ROCm et KVM"
-
