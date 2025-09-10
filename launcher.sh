@@ -1,5 +1,5 @@
 #!/bin/bash
-# launcher.sh - Menu stylé avec bordures et noms de scripts
+# launcher.sh - Menu stylé avec bordures, noms de scripts et checklist
 
 # Couleurs
 GREEN='\033[1;32m'
@@ -12,6 +12,20 @@ NC='\033[0m' # No Color
 SCRIPT1="omv-config-base.sh"
 SCRIPT2="docker-ollama-base.sh"
 
+# =================== Checklist dynamique ===================
+declare -A CHECKLIST
+
+mark_done() { CHECKLIST["$1"]="✅"; }
+mark_fail() { CHECKLIST["$1"]="❌"; }
+
+show_checklist() {
+    echo -e "\n${CYAN}==================== Checklist ====================${NC}"
+    for task in "${!CHECKLIST[@]}"; do
+        echo -e "${CHECKLIST[$task]} $task"
+    done
+    echo -e "${CYAN}==================================================${NC}\n"
+}
+
 # Vérifier et rendre exécutable
 check_exec() {
     local script=$1
@@ -21,50 +35,18 @@ check_exec() {
     fi
 }
 
-# Initialiser la barre fixe
-init_progress_bar() {
-    BAR_WIDTH=$(( $(tput cols) - 10 ))  # espace pour "[| ] 100%"
-    echo -e "\n"  # espace avant barre
-    PROGRESS_ROW=$(tput lines)
-}
-
-# Mettre à jour la barre
-update_progress_bar() {
-    local percent=$1
-    local info="$2"
-    local filled=$((BAR_WIDTH * percent / 100))
-    local empty=$((BAR_WIDTH - filled))
-    local bar=$(printf "%${filled}s" "" | tr ' ' '#')
-    local space=$(printf "%${empty}s" "")
-    # info au-dessus
-    tput sc
-    tput cup $((PROGRESS_ROW-2)) 0
-    printf "%-$(tput cols)s" "$info"
-    # barre fixe
-    tput cup $((PROGRESS_ROW-1)) 0
-    printf "[|${GREEN}%s${NC}%s] %3d%%" "$bar" "$space" "$percent"
-    tput rc
-}
-
-# Exécuter script avec barre et info dynamique
+# Exécuter un script et mettre à jour la checklist
 run_script() {
     local script=$1
     echo -e "${CYAN}=== Exécution de $script ===${NC}"
     check_exec "$script"
-    init_progress_bar
-    ./"$script" &
-    pid=$!
-
-    percent=0
-    while kill -0 $pid 2>/dev/null; do
-        percent=$((percent + 2))
-        [ $percent -gt 100 ] && percent=100
-        update_progress_bar $percent "Traitement de $script en cours..."
-        sleep 0.3
-    done
-    wait $pid
-    update_progress_bar 100 "$script terminé ✅"
-    echo -e "\n"
+    if ./"$script"; then
+        mark_done "$script"
+        echo -e "${GREEN}$script terminé ✅${NC}\n"
+    else
+        mark_fail "$script"
+        echo -e "${RED}$script échoué ❌${NC}\n"
+    fi
 }
 
 # Partie 1
@@ -108,4 +90,6 @@ case $CHOIX in
     *) echo -e "${RED}Option invalide${NC}" ;;
 esac
 
-echo -e "${CYAN}Script terminé! 👋${NC}"
+# Affichage checklist finale
+show_checklist
+echo -e "${CYAN}Tous les scripts terminés! 👋${NC}"
