@@ -5,19 +5,18 @@ services:
     command: ["/bin/bash", "-c", "/workspace/scripts/install-gpu-tools.sh && exec whisper --model small --language fr --onnxruntime"]
     volumes:
       - ./whisper-data:/data
-      - ./scripts:/workspace/scripts      # <-- montage du script
+      - ./scripts:/workspace/scripts
     environment:
       - TZ=Europe/Paris
     restart: unless-stopped
     ports:
       - 127.0.0.1:10300:10300
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: "rocm"
-              count: all
-              capabilities: ["gpu"]
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
 
   piper:
     container_name: piper
@@ -25,19 +24,18 @@ services:
     command: ["/bin/bash", "-c", "/workspace/scripts/install-gpu-tools.sh && exec piper --voice fr-siwis-medium --onnxruntime"]
     volumes:
       - ./piper-data:/data
-      - ./scripts:/workspace/scripts      # <-- montage du script
+      - ./scripts:/workspace/scripts
     environment:
       - TZ=Europe/Paris
     restart: unless-stopped
     ports:
       - 127.0.0.1:10200:10200
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: "rocm"
-              count: all
-              capabilities: ["gpu"]
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
 
 networks:
   default:
