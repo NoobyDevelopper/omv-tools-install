@@ -6,88 +6,111 @@ BLUE='\033[1;34m'
 LIGHT_BLUE='\033[1;36m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
+RED='\033[1;31m'
 NC='\033[0m'
 
 # ========== Fonctions de log ==========
 info()    { echo -e "${BLUE}[INFO]${NC} ${LIGHT_BLUE}$*${NC}"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error()   { echo -e "[ERROR] $*" >&2; }
+error()   { echo -e "${RED}[ERROR]${NC} $*"; }
 
-TASKS_DONE=()
-VENV_DIR="$HOME/onnx_env"
+# =================== Checklist dynamique ===================
+declare -A CHECKLIST
 
-# ---------------- Fonction auto-update ONNX ----------------
-update_onnx() {
-    source "$VENV_DIR/bin/activate"
-    if pip show onnxruntime &> /dev/null; then
-        info "ONNX Runtime déjà installé, vérification des mises à jour..."
-        pip install --upgrade onnxruntime
-        TASKS_DONE+=("${LIGHT_BLUE}ONNX Runtime mis à jour ${GREEN}Fait${NC}")
-    else
-        info "Installation de ONNX Runtime dans le venv"
-        pip install --upgrade pip setuptools wheel
-        pip install onnxruntime numpy
-        TASKS_DONE+=("${LIGHT_BLUE}ONNX Runtime installé ${GREEN}Fait${NC}")
-    fi
-    deactivate
-    info "Venv désactivé après mise à jour ONNX Runtime"
+mark_done() { CHECKLIST["$1"]="✅"; }
+mark_warn() { CHECKLIST["$1"]="⚠️"; }
+mark_fail() { CHECKLIST["$1"]="❌"; }
+
+show_checklist() {
+    echo -e "${BLUE}==================== Checklist ====================${NC}"
+    for task in "${!CHECKLIST[@]}"; do
+        echo -e "${CHECKLIST[$task]} $task"
+    done
+    echo -e "${BLUE}==================================================${NC}"
 }
 
-# ---------------- Création venv si nécessaire ----------------
-if [ ! -d "$VENV_DIR" ]; then
-    info "Création du virtualenv Python isolé dans $VENV_DIR"
-    python3 -m venv "$VENV_DIR"
-    TASKS_DONE+=("${LIGHT_BLUE}Virtualenv créé ${GREEN}Fait${NC}")
+# =================== Début script ===================
+
+# ---------------- Python virtualenv ----------------
+info "Vérification du virtualenv"
+if [ -d ~/onnx_env ]; then
+    mark_done "Virtualenv existant"
 else
-    TASKS_DONE+=("${LIGHT_BLUE}Virtualenv déjà présent ${GREEN}Déjà à jour${NC}")
+    python3 -m venv ~/onnx_env && mark_done "Virtualenv créé" || mark_fail "Impossible de créer le virtualenv"
 fi
 
-# ---------------- Détection GPU et installation pilotes ----------------
-info "Détection du GPU présent"
-GPU_VENDOR=""
-if lspci | grep -i nvidia &> /dev/null; then
-    GPU_VENDOR="NVIDIA"
-elif lspci | grep -i amd | grep -i vga &> /dev/null; then
-    GPU_VENDOR="AMD"
+source ~/onnx_env/bin/activate
+
+# Installer pip, setuptools, wheel
+for pkg in pip setuptools wheel; do
+    if pip show "$pkg" &> /dev/null; then
+        mark_done "$pkg déjà présent"
+    else
+        pip install -q "$pkg" && mark_done "$pkg installé" || mark_fail "Impossible d'installer $pkg"
+    fi
+done
+
+# ---------------- Détection GPU ----------------
+info "Détection du GPU"
+GPU_TYPE="unknown"
+if lspci | grep -i amd &> /dev/null; then
+    GPU_TYPE="AMD"
+    mark_done "GPU AMD détecté"
+elif lspci | grep -i nvidia &> /dev/null; then
+    GPU_TYPE="NVIDIA"
+    mark_done "GPU NVIDIA détecté"
 elif lspci | grep -i intel &> /dev/null; then
-    GPU_VENDOR="Intel"
+    GPU_TYPE="Intel"
+    mark_done "GPU Intel détecté"
+else
+    mark_warn "Aucun GPU détecté"
 fi
 
-TASKS_DONE+=("${LIGHT_BLUE}GPU détecté : $GPU_VENDOR ${GREEN}Fait${NC}")
-
-case "$GPU_VENDOR" in
-    "AMD")
-        info "Installation pilotes AMD + ROCm"
-        # ... ton code AMD existant ...
+# ---------------- Installation drivers GPU ----------------
+case "$GPU_TYPE" in
+    AMD)
+        info "Installation pilotes AMD et ROCm"
+        sudo apt install -y rocm && mark_done "ROCm installé" || mark_fail "ROCm échoué"
         ;;
-    "NVIDIA")
-        info "Installation pilotes NVIDIA + CUDA"
-        # ... code NVIDIA ...
+    NVIDIA)
+        info "Installation pilotes NVIDIA et CUDA"
+        sudo apt install -y nvidia-driver-535 nvidia-cuda-toolkit \
+            && mark_done "Pilotes NVIDIA et CUDA installés" \
+            || mark_fail "Pilotes NVIDIA/ CUDA échoués"
         ;;
-    "Intel")
+    Intel)
         info "Installation pilotes Intel GPU"
-        # ... code Intel ...
-        ;;
-    *)
-        warn "Aucun GPU compatible détecté"
-        TASKS_DONE+=("${LIGHT_BLUE}Pilotes GPU non installés ${YELLOW}Skipped${NC}")
+        sudo apt install -y intel-media-va-driver-non-free vainfo \
+            && mark_done "Pilotes Intel installés" \
+            || mark_fail "Pilotes Intel échoués"
         ;;
 esac
 
-# ---------------- Mise à jour ONNX Runtime automatique ----------------
-update_onnx
+# ---------------- OMV-Extras et extensions ----------------
+info "Installation OMV-Extras"
+if wget -qO /tmp/omv-extras-install.sh https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/install; then
+    bash /tmp/omv-extras-install.sh >/dev/null 2>&1 && mark_done "OMV-Extras installé"
+else
+    mark_fail "OMV-Extras téléchargement échoué"
+fi
+
+EXTENSIONS=(clamav cterm diskstats fail2ban md sharerootfs kvm compose)
+for ext in "${EXTENSIONS[@]}"; do
+    sudo apt install -y openmediavault-"$ext" &> /dev/null && mark_done "Extension $ext installée/mise à jour" || mark_fail "Extension $ext échouée"
+done
+
+# ---------------- Python ONNX Runtime ----------------
+info "Installation ONNX Runtime et dépendances"
+pip install -q numpy onnxruntime && mark_done "ONNX Runtime + numpy installés" || mark_fail "ONNX Runtime installation échouée"
 
 # ---------------- Nettoyage ----------------
-info "Nettoyage packages inutiles"
-sudo apt autoremove -y
-TASKS_DONE+=("${LIGHT_BLUE}Packages inutiles supprimés ${GREEN}Fait${NC}")
+info "Nettoyage des packages inutiles"
+sudo apt autoremove -y &> /dev/null && mark_done "Packages inutiles supprimés" || mark_warn "Aucun package à supprimer"
 
-# ---------------- Résumé des tâches ----------------
-echo -e "${BLUE}====================================================================${NC}"
-for task in "${TASKS_DONE[@]}"; do
-    echo -e "$task"
-done
-echo -e "${BLUE}====================================================================${NC}"
+# ---------------- Résumé ----------------
+show_checklist
 
-success "Script terminé : GPU détecté, venv et ONNX Runtime prêts, auto-update activé"
+# Désactivation automatique du venv
+deactivate
+success "Script terminé. Virtualenv désactivé."
