@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   whisper:
     container_name: whisper
