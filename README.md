@@ -14,72 +14,38 @@ pas dev fait par chatgpt je decline toute responsabilite
 
 la sauvegarde est une vertue qui faut grandement aimé.
 
-script 1 omv-config-base
-
-        1️⃣ Gestion du virtualenv Python
+        OMV Config Base - Script
         
-        Vérifie si le répertoire ~/onnx_env existe.
+        Automatisation complète de la configuration de base pour OpenMediaVault avec support GPU et Python.
         
-        Si non : crée un virtualenv Python isolé à cet emplacement.
+        Fonctionnalités clés :
         
-        Si oui : indique que le venv est déjà présent.
+        Mise à jour du système (apt update/upgrade)
         
-        Permet d’installer et isoler ONNX Runtime et ses dépendances (numpy, pip, setuptools, wheel) sans toucher à l’host.
+        Firmware AMD graphique
         
-        2️⃣ Mise à jour ou installation d’ONNX Runtime
+        Installation de wget
         
-        Active automatiquement le venv.
+        OMV-Extras et extensions OMV (ClamAV, CTerm, DiskStats, Fail2Ban, MD, ShareRootFS)
         
-        Vérifie si onnxruntime est installé :
+        Outils Python (python3-venv, pip, setuptools, wheel)
         
-        Déjà installé → met à jour la version existante.
+        Détection automatique GPU et installation des drivers adaptés :
         
-        Non installé → installe ONNX Runtime et numpy dans le venv.
+        AMD → ROCm
         
-        Après l’installation ou la mise à jour, le venv est désactivé automatiquement.
+        NVIDIA → CUDA
         
-        3️⃣ Détection et gestion du GPU
+        Intel → Intel GPU Tools
         
-        Détecte automatiquement le type de GPU présent via lspci :
+        Ajout de l’utilisateur aux groupes render et video
         
-        AMD → installe les pilotes AMD et ROCm.
+        Installation KVM (openmediavault-kvm)
         
-        NVIDIA → installe les pilotes NVIDIA et CUDA (à compléter).
+        OMV-Compose + Docker Compose
         
-        Intel → installe les pilotes Intel GPU (à compléter).
+        Nettoyage des paquets inutiles (apt autoremove)
         
-        Enregistre le type de GPU et l’état de l’installation dans le log.
+        Création d’un venv Python avec onnxruntime, onnx et numpy
         
-        4️⃣ Installation et mise à jour des dépendances systèmes
-        
-        Gère les paquets de base pour Python : python3-setuptools et python3-wheel.
-        
-        Gère les paquets nécessaires pour ROCm, AMD, NVIDIA ou Intel selon le GPU détecté.
-        
-        Nettoie automatiquement les paquets inutiles avec apt autoremove.
-        
-        5️⃣ Gestion des logs et couleurs
-        
-        Affiche toutes les étapes avec des couleurs codées :
-        
-        INFO : bleu clair
-        
-        SUCCESS : vert
-        
-        WARN : jaune
-        
-        ERROR : rouge
-        
-        Marque chaque tâche comme :
-        
-        Installé (Fait)
-        
-        Mise à jour (Fait)
-        
-        Déjà à jour (Déjà à jour)
-        
-        6️⃣ Résumé final
-        
-        Affiche un résumé clair de toutes les actions effectuées avec le statut de chaque tâche.
-        
-        Confirme que le GPU est détecté, que le venv est prêt, et que ONNX Runtime est opérationnel.
+        Checklist finale : ✔ toutes les étapes sont terminées et prêtes à l’usage.
