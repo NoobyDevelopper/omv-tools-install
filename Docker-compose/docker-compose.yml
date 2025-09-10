@@ -2,7 +2,10 @@ services:
   whisper:
     container_name: whisper
     image: rhasspy/wyoming-whisper:latest
-    command: ["/bin/bash", "-c", "/workspace/scripts/install-gpu-tools.sh && exec whisper --model small --language fr --onnxruntime"]
+    command: >
+      /bin/bash -c "
+      /workspace/scripts/install-gpu-tools.sh &&
+      exec whisper --model small --language fr --onnxruntime --data-dir /data --uri http://0.0.0.0:10300"
     volumes:
       - /docker_DATA/whisper-data:/data
       - /docker_DATA/scripts:/workspace/scripts
@@ -11,16 +14,21 @@ services:
     restart: unless-stopped
     ports:
       - 127.0.0.1:10300:10300
-    devices:
-      - /dev/kfd
-      - /dev/dri
-    group_add:
-      - video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: "rocm"
+              count: all
+              capabilities: ["gpu"]
 
   piper:
     container_name: piper
     image: rhasspy/wyoming-piper:latest
-    command: ["/bin/bash", "-c", "/workspace/scripts/install-gpu-tools.sh && exec piper --voice fr-siwis-medium --onnxruntime"]
+    command: >
+      /bin/bash -c "
+      /workspace/scripts/install-gpu-tools.sh &&
+      exec piper --voice fr-siwis-medium --onnxruntime --data-dir /data --piper piper"
     volumes:
       - /docker_DATA/piper-data:/data
       - /docker_DATA/scripts:/workspace/scripts
@@ -29,11 +37,13 @@ services:
     restart: unless-stopped
     ports:
       - 127.0.0.1:10200:10200
-    devices:
-      - /dev/kfd
-      - /dev/dri
-    group_add:
-      - video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: "rocm"
+              count: all
+              capabilities: ["gpu"]
 
 networks:
   default:
