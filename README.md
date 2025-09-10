@@ -18,21 +18,70 @@ la sauvegarde est une vertue qui faut grandement aimé.
 
 script 1 omv-config-base
 
-    Système déjà à jour Fait
-    Firmware AMD graphique installé Fait
-    wget déjà présent Fait
-    OMV-Extras téléchargé Fait
-    OMV-Extras installé Fait
-    Extension openmediavault-clamav déjà à jour Fait
-    Extension openmediavault-cterm déjà à jour Fait
-    Extension openmediavault-diskstats déjà à jour Fait
-    Extension openmediavault-fail2ban déjà à jour Fait
-    Extension openmediavault-md déjà à jour Fait
-    Extension openmediavault-sharerootfs déjà à jour Fait
-    python3-setuptools déjà à jour Fait
-    python3-wheel déjà à jour Fait
-    Package AMD GPU installé Fait
-    Utilisateur ajouté aux groupes render et video Fait
-    ROCm installé Fait
-    Extension openmediavault-kvm installée/mise à jour Fait
-    Packages inutiles supprimés Fait
+   1️⃣ Gestion du virtualenv Python
+
+Vérifie si le répertoire ~/onnx_env existe.
+
+Si non : crée un virtualenv Python isolé à cet emplacement.
+
+Si oui : indique que le venv est déjà présent.
+
+Permet d’installer et isoler ONNX Runtime et ses dépendances (numpy, pip, setuptools, wheel) sans toucher à l’host.
+
+2️⃣ Mise à jour ou installation d’ONNX Runtime
+
+Active automatiquement le venv.
+
+Vérifie si onnxruntime est installé :
+
+Déjà installé → met à jour la version existante.
+
+Non installé → installe ONNX Runtime et numpy dans le venv.
+
+Après l’installation ou la mise à jour, le venv est désactivé automatiquement.
+
+3️⃣ Détection et gestion du GPU
+
+Détecte automatiquement le type de GPU présent via lspci :
+
+AMD → installe les pilotes AMD et ROCm.
+
+NVIDIA → installe les pilotes NVIDIA et CUDA (à compléter).
+
+Intel → installe les pilotes Intel GPU (à compléter).
+
+Enregistre le type de GPU et l’état de l’installation dans le log.
+
+4️⃣ Installation et mise à jour des dépendances systèmes
+
+Gère les paquets de base pour Python : python3-setuptools et python3-wheel.
+
+Gère les paquets nécessaires pour ROCm, AMD, NVIDIA ou Intel selon le GPU détecté.
+
+Nettoie automatiquement les paquets inutiles avec apt autoremove.
+
+5️⃣ Gestion des logs et couleurs
+
+Affiche toutes les étapes avec des couleurs codées :
+
+INFO : bleu clair
+
+SUCCESS : vert
+
+WARN : jaune
+
+ERROR : rouge
+
+Marque chaque tâche comme :
+
+Installé (Fait)
+
+Mise à jour (Fait)
+
+Déjà à jour (Déjà à jour)
+
+6️⃣ Résumé final
+
+Affiche un résumé clair de toutes les actions effectuées avec le statut de chaque tâche.
+
+Confirme que le GPU est détecté, que le venv est prêt, et que ONNX Runtime est opérationnel.
