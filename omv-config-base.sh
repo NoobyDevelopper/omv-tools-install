@@ -9,108 +9,219 @@ YELLOW='\033[1;33m'
 RED='\033[1;31m'
 NC='\033[0m'
 
-# ========== Fonctions de log ==========
+# ========== Fonctions log ==========
 info()    { echo -e "${BLUE}[INFO]${NC} ${LIGHT_BLUE}$*${NC}"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error()   { echo -e "${RED}[ERROR]${NC} $*"; }
+error()   { echo -e "${RED}[ERROR] $*${NC}"; }
+
+# ========== Progress Bar ==========
+show_progress() {
+    local done=$1
+    local total=$2
+    local width=40
+    local percent=$(( done * 100 / total ))
+    local filled=$(( percent * width / 100 ))
+    local empty=$(( width - filled ))
+
+    printf "\r${BLUE}[PROGRESS]${NC} ${BLUE}|"
+    printf '%0.s█' $(seq 1 $filled)
+    printf '%0.s ' $(seq 1 $empty)
+    printf "| %3d%% (%d/%d)${NC}" $percent $done $total
+}
 
 # =================== Checklist dynamique ===================
 declare -A CHECKLIST
-
 mark_done() { CHECKLIST["$1"]="✅"; }
 mark_warn() { CHECKLIST["$1"]="⚠️"; }
 mark_fail() { CHECKLIST["$1"]="❌"; }
 
 show_checklist() {
-    echo -e "${BLUE}==================== Checklist ====================${NC}"
+    echo -e "\n${BLUE}==================== Checklist ====================${NC}"
     for task in "${!CHECKLIST[@]}"; do
         echo -e "${CHECKLIST[$task]} $task"
     done
-    echo -e "${BLUE}==================================================${NC}"
+    echo -e "${BLUE}==================================================${NC}\n"
 }
 
-# =================== Début script ===================
+# ========== Gestion des tâches ==========
+TASKS_TOTAL=12
+TASKS_DONE_COUNT=0
 
-# ---------------- Python virtualenv ----------------
-info "Vérification du virtualenv"
-if [ -d ~/onnx_env ]; then
-    mark_done "Virtualenv existant"
+finish_task() {
+    local task="$1"
+    local status="$2"
+    case "$status" in
+        done) mark_done "$task" ;;
+        warn) mark_warn "$task" ;;
+        fail) mark_fail "$task" ;;
+    esac
+    TASKS_DONE_COUNT=$((TASKS_DONE_COUNT+1))
+    show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
+}
+
+# =================== Liste des étapes ===================
+STEPS=(
+    "Mise à jour système"
+    "Firmware AMD"
+    "wget"
+    "OMV-Extras"
+    "Extensions OMV"
+    "Python utils"
+    "GPU Drivers"
+    "Groupes utilisateur"
+    "OMV-KVM"
+    "OMV-Compose + Docker"
+    "Nettoyage"
+    "Venv + ONNX"
+)
+
+# =================== Déroulement ===================
+
+# --- Mise à jour système ---
+info "Mise à jour du système"
+if sudo apt update -qq && sudo apt upgrade -y -qq; then
+    success "Système à jour"
+    finish_task "Mise à jour système" done
 else
-    python3 -m venv ~/onnx_env && mark_done "Virtualenv créé" || mark_fail "Impossible de créer le virtualenv"
+    finish_task "Mise à jour système" fail
 fi
 
-source ~/onnx_env/bin/activate
-
-# Installer pip, setuptools, wheel
-for pkg in pip setuptools wheel; do
-    if pip show "$pkg" &> /dev/null; then
-        mark_done "$pkg déjà présent"
+# --- Firmware AMD ---
+info "Vérification firmware AMD"
+if dpkg -l | grep -qw firmware-amd-graphics; then
+    success "Firmware AMD déjà présent"
+    finish_task "Firmware AMD" done
+else
+    if sudo apt install -y -qq firmware-amd-graphics; then
+        success "Firmware AMD installé"
+        finish_task "Firmware AMD" done
     else
-        pip install -q "$pkg" && mark_done "$pkg installé" || mark_fail "Impossible d'installer $pkg"
+        finish_task "Firmware AMD" fail
     fi
-done
-
-# ---------------- Détection GPU ----------------
-info "Détection du GPU"
-GPU_TYPE="unknown"
-if lspci | grep -i amd &> /dev/null; then
-    GPU_TYPE="AMD"
-    mark_done "GPU AMD détecté"
-elif lspci | grep -i nvidia &> /dev/null; then
-    GPU_TYPE="NVIDIA"
-    mark_done "GPU NVIDIA détecté"
-elif lspci | grep -i intel &> /dev/null; then
-    GPU_TYPE="Intel"
-    mark_done "GPU Intel détecté"
-else
-    mark_warn "Aucun GPU détecté"
 fi
 
-# ---------------- Installation drivers GPU ----------------
-case "$GPU_TYPE" in
-    AMD)
-        info "Installation pilotes AMD et ROCm"
-        sudo apt install -y rocm && mark_done "ROCm installé" || mark_fail "ROCm échoué"
-        ;;
-    NVIDIA)
-        info "Installation pilotes NVIDIA et CUDA"
-        sudo apt install -y nvidia-driver-535 nvidia-cuda-toolkit \
-            && mark_done "Pilotes NVIDIA et CUDA installés" \
-            || mark_fail "Pilotes NVIDIA/ CUDA échoués"
-        ;;
-    Intel)
-        info "Installation pilotes Intel GPU"
-        sudo apt install -y intel-media-va-driver-non-free vainfo \
-            && mark_done "Pilotes Intel installés" \
-            || mark_fail "Pilotes Intel échoués"
-        ;;
-esac
-
-# ---------------- OMV-Extras et extensions ----------------
-info "Installation OMV-Extras"
-if wget -qO /tmp/omv-extras-install.sh https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/install; then
-    bash /tmp/omv-extras-install.sh >/dev/null 2>&1 && mark_done "OMV-Extras installé"
+# --- wget ---
+info "Vérification de wget"
+if ! command -v wget &>/dev/null; then
+    if sudo apt install -y -qq wget; then
+        success "wget installé"
+        finish_task "wget" done
+    else
+        finish_task "wget" fail
+    fi
 else
-    mark_fail "OMV-Extras téléchargement échoué"
+    success "wget déjà présent"
+    finish_task "wget" done
 fi
 
-EXTENSIONS=(clamav cterm diskstats fail2ban md sharerootfs kvm compose)
+# --- OMV-Extras ---
+info "Installation d'OMV-Extras"
+if wget -qO /tmp/omv-extras-install.sh https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/install && bash /tmp/omv-extras-install.sh >/dev/null 2>&1; then
+    success "OMV-Extras installé"
+    finish_task "OMV-Extras" done
+else
+    finish_task "OMV-Extras" fail
+fi
+
+# --- Extensions OMV ---
+EXTENSIONS=(openmediavault-clamav openmediavault-cterm openmediavault-diskstats openmediavault-fail2ban openmediavault-md openmediavault-sharerootfs)
 for ext in "${EXTENSIONS[@]}"; do
-    sudo apt install -y openmediavault-"$ext" &> /dev/null && mark_done "Extension $ext installée/mise à jour" || mark_fail "Extension $ext échouée"
+    sudo apt install -y -qq "$ext"
 done
+success "Extensions OMV installées"
+finish_task "Extensions OMV" done
 
-# ---------------- Python ONNX Runtime ----------------
-info "Installation ONNX Runtime et dépendances"
-pip install -q numpy onnxruntime && mark_done "ONNX Runtime + numpy installés" || mark_fail "ONNX Runtime installation échouée"
+# --- Python utils ---
+info "Installation Python utils"
+if sudo apt install -y -qq python3-venv python3-pip python3-setuptools python3-wheel; then
+    success "Python utils installés"
+    finish_task "Python utils" done
+else
+    finish_task "Python utils" fail
+fi
 
-# ---------------- Nettoyage ----------------
-info "Nettoyage des packages inutiles"
-sudo apt autoremove -y &> /dev/null && mark_done "Packages inutiles supprimés" || mark_warn "Aucun package à supprimer"
+# --- GPU Detection & Drivers ---
+info "Détection GPU"
+GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
 
-# ---------------- Résumé ----------------
-show_checklist
+if echo "$GPU_VENDOR" | grep -qi "amd"; then
+    info "GPU AMD détecté"
+    DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
+    DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
+    wget -q "$DEB_URL" -O "$DEB_FILE"
+    sudo apt install -y -qq ./"$DEB_FILE" rocm
+    success "Pilotes AMD + ROCm installés"
+    finish_task "GPU Drivers" done
 
-# Désactivation automatique du venv
+elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
+    info "GPU NVIDIA détecté"
+    sudo apt install -y -qq nvidia-driver nvidia-cuda-toolkit
+    success "Pilotes NVIDIA + CUDA installés"
+    finish_task "GPU Drivers" done
+
+elif echo "$GPU_VENDOR" | grep -qi "intel"; then
+    info "GPU Intel détecté"
+    sudo apt install -y -qq intel-gpu-tools
+    success "Pilotes Intel installés"
+    finish_task "GPU Drivers" done
+
+else
+    warn "Aucun GPU pris en charge détecté"
+    finish_task "GPU Drivers" warn
+fi
+
+# --- Groupes utilisateur ---
+sudo usermod -a -G render,video "$LOGNAME"
+success "Utilisateur ajouté aux groupes render et video"
+finish_task "Groupes utilisateur" done
+
+# --- KVM ---
+sudo apt install -y -qq openmediavault-kvm
+success "KVM installé"
+finish_task "OMV-KVM" done
+
+# --- OMV-Compose + Docker ---
+sudo apt install -y -qq openmediavault-compose docker-compose-plugin
+success "OMV-Compose + Docker Compose installés"
+finish_task "OMV-Compose + Docker" done
+
+# --- Nettoyage ---
+sudo apt autoremove -y -qq
+success "Nettoyage effectué"
+finish_task "Nettoyage" done
+
+# --- Venv + ONNX avec auto-détection GPU et mise à jour automatique ---
+VENV_DIR="$HOME/onnx_env"
+
+info "Vérification du venv"
+if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+    info "Venv créé"
+fi
+
+source "$VENV_DIR/bin/activate"
+pip install --upgrade pip
+
+info "Vérification ONNX Runtime"
+if pip show onnxruntime >/dev/null 2>&1 || pip show onnxruntime-gpu >/dev/null 2>&1; then
+    info "ONNX Runtime déjà installé, mise à jour..."
+else
+    info "ONNX Runtime non présent, installation..."
+fi
+
+if echo "$GPU_VENDOR" | grep -qi "amd"; then
+    pip install --upgrade onnxruntime onnx numpy
+elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
+    pip install --upgrade onnxruntime-gpu onnx numpy
+else
+    pip install --upgrade onnxruntime onnx numpy
+fi
+
 deactivate
-success "Script terminé. Virtualenv désactivé."
+success "Venv + ONNX installé et à jour, prêt pour Docker Compose avec --onnxruntime"
+finish_task "Venv + ONNX" done
+
+# =================== Affichage checklist ===================
+show_checklist
+success "Configuration terminée !"
