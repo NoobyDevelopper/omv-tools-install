@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 set -euo pipefail
 
 # ========== Couleurs ==========
@@ -30,31 +30,31 @@ else
     TASKS_DONE+=("${LIGHT_BLUE}Système déjà à jour ${GREEN}Fait${NC}")
 fi
 
+# ---------------- Fonctions de détection automatique ----------------
+check_pkg() {
+    local pkg=$1
+    if dpkg -l | grep -qw "$pkg"; then
+        status=$(apt list --upgradable 2>/dev/null | grep "^$pkg/" || echo "")
+        if [ -z "$status" ]; then
+            echo -e "${LIGHT_BLUE}$pkg ${GREEN}Déjà à jour${NC}"
+            TASKS_DONE+=("${LIGHT_BLUE}$pkg ${GREEN}Déjà à jour${NC}")
+        else
+            sudo apt install -y "$pkg"
+            echo -e "${LIGHT_BLUE}$pkg ${YELLOW}Mise à jour${NC}"
+            TASKS_DONE+=("${LIGHT_BLUE}$pkg ${YELLOW}Mise à jour${NC}")
+        fi
+    else
+        sudo apt install -y "$pkg"
+        echo -e "${LIGHT_BLUE}$pkg ${GREEN}Installé${NC}"
+        TASKS_DONE+=("${LIGHT_BLUE}$pkg ${GREEN}Installé${NC}")
+    fi
+}
+
 # ---------------- Firmware AMD graphique ----------------
-info "Vérification du firmware AMD graphique"
-if dpkg -l | grep -qw firmware-amd-graphics; then
-    version=$(apt list --installed firmware-amd-graphics 2>/dev/null | grep firmware-amd-graphics | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}firmware-amd-graphics $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}Firmware AMD graphique mis à jour ${GREEN}Fait${NC}")
-else
-    sudo apt install -y -qq firmware-amd-graphics
-    version=$(apt list --installed firmware-amd-graphics 2>/dev/null | grep firmware-amd-graphics | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}firmware-amd-graphics $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}Firmware AMD graphique installé ${GREEN}Fait${NC}")
-fi
+check_pkg "firmware-amd-graphics"
 
 # ---------------- wget ----------------
-info "Vérification de wget"
-if ! command -v wget &> /dev/null; then
-    sudo apt install -y -qq wget
-    version=$(apt list --installed wget 2>/dev/null | grep wget | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}wget $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}wget installé ${GREEN}Fait${NC}")
-else
-    version=$(apt list --installed wget 2>/dev/null | grep wget | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}wget $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}wget déjà présent ${GREEN}Fait${NC}")
-fi
+check_pkg "wget"
 
 # ---------------- OMV-Extras ----------------
 info "Installation d'OMV-Extras"
@@ -75,48 +75,51 @@ EXTENSIONS=(
     openmediavault-md
     openmediavault-sharerootfs
 )
-
 for ext in "${EXTENSIONS[@]}"; do
-    info "Vérification de l'extension $ext"
-    output=$(sudo apt install -y "$ext" 2>&1)
-    if echo "$output" | grep -q "est déjà la version la plus récente"; then
-        version=$(apt list --installed "$ext" 2>/dev/null | grep "$ext" | awk -F'/' '{print $2}')
-        echo -e "${LIGHT_BLUE}$ext $version ${GREEN}Fait${NC}"
-        TASKS_DONE+=("${LIGHT_BLUE}Extension $ext déjà à jour ${GREEN}Fait${NC}")
-    else
-        version=$(apt list --installed "$ext" 2>/dev/null | grep "$ext" | awk -F'/' '{print $2}')
-        echo -e "${LIGHT_BLUE}$ext $version ${GREEN}Fait${NC}"
-        TASKS_DONE+=("${LIGHT_BLUE}Extension $ext installée/mise à jour ${GREEN}Fait${NC}")
-    fi
+    check_pkg "$ext"
 done
 
 # ---------------- Python utils ----------------
-PYTHON_PKGS=(python3-setuptools python3-wheel)
-
+PYTHON_PKGS=(python3-venv python3-pip python3-setuptools python3-wheel)
 for pkg in "${PYTHON_PKGS[@]}"; do
-    info "Vérification de $pkg"
-    output=$(sudo apt install -y "$pkg" 2>&1)
-    if echo "$output" | grep -q "est déjà la version la plus récente"; then
-        version=$(apt list --installed "$pkg" 2>/dev/null | grep "$pkg" | awk -F'/' '{print $2}')
-        echo -e "${LIGHT_BLUE}$pkg $version ${GREEN}Fait${NC}"
-        TASKS_DONE+=("${LIGHT_BLUE}$pkg déjà à jour ${GREEN}Fait${NC}")
-    else
-        version=$(apt list --installed "$pkg" 2>/dev/null | grep "$pkg" | awk -F'/' '{print $2}')
-        echo -e "${LIGHT_BLUE}$pkg $version ${GREEN}Fait${NC}"
-        TASKS_DONE+=("${LIGHT_BLUE}$pkg installé/mis à jour ${GREEN}Fait${NC}")
-    fi
+    check_pkg "$pkg"
 done
+
+# ---------------- Création venv ----------------
+VENV_DIR="$HOME/onnx_env"
+if [ -d "$VENV_DIR" ]; then
+    echo -e "${LIGHT_BLUE}Venv déjà présent ${GREEN}Déjà à jour${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}Venv déjà présent ${GREEN}Déjà à jour${NC}")
+else
+    python3 -m venv "$VENV_DIR"
+    echo -e "${LIGHT_BLUE}Venv créé dans $VENV_DIR ${GREEN}Installé${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}Venv créé dans $VENV_DIR ${GREEN}Installé${NC}")
+fi
+
+# ---------------- Activation venv et ONNX Runtime ----------------
+source "$VENV_DIR/bin/activate"
+
+if pip show onnxruntime-rocm &> /dev/null; then
+    echo -e "${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Déjà à jour${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Déjà à jour${NC}")
+else
+    pip install --upgrade pip setuptools wheel
+    pip install onnxruntime-rocm
+    echo -e "${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Installé${NC}"
+    TASKS_DONE+=("${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Installé${NC}")
+fi
+
+# ---------------- Sortie automatique du venv ----------------
+deactivate
+success "Venv désactivé automatiquement"
 
 # ---------------- Installation AMD GPU ----------------
 DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
 DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
-
 info "Téléchargement et installation du package AMD GPU"
 [ -f "$DEB_FILE" ] && rm -f "$DEB_FILE"
 wget -q "$DEB_URL" -O "$DEB_FILE"
 sudo apt install -y -qq ./"$DEB_FILE"
-version=$(apt list --installed amdgpu-install 2>/dev/null | grep amdgpu-install | awk -F'/' '{print $2}')
-echo -e "${LIGHT_BLUE}amdgpu-install $version ${GREEN}Fait${NC}"
 TASKS_DONE+=("${LIGHT_BLUE}Package AMD GPU installé ${GREEN}Fait${NC}")
 
 # ---------------- Groupes utilisateur ----------------
@@ -124,52 +127,14 @@ sudo usermod -a -G render,video "$LOGNAME"
 TASKS_DONE+=("${LIGHT_BLUE}Utilisateur ajouté aux groupes render et video ${GREEN}Fait${NC}")
 
 # ---------------- ROCm ----------------
-info "Installation de ROCm via le meta-package"
-if sudo apt install -y rocm; then
-    version=$(apt list --installed rocm 2>/dev/null | grep rocm | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}rocm $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}ROCm installé ${GREEN}Fait${NC}")
-else
-    warn "ROCm non installé, vérifier le dépôt AMD"
-fi
+check_pkg "rocm"
 
 # ---------------- Extension KVM ----------------
-info "Installation de l'extension KVM"
-if ! dpkg -l | grep -qw openmediavault-kvm; then
-    sudo apt install -y -qq openmediavault-kvm
-fi
-version=$(apt list --installed openmediavault-kvm 2>/dev/null | grep openmediavault-kvm | awk -F'/' '{print $2}')
-echo -e "${LIGHT_BLUE}openmediavault-kvm $version ${GREEN}Fait${NC}"
-TASKS_DONE+=("${LIGHT_BLUE}Extension openmediavault-kvm installée/mise à jour ${GREEN}Fait${NC}")
+check_pkg "openmediavault-kvm"
 
 # ---------------- OMV-Compose + Docker Compose ----------------
-info "Vérification d'OMV-Compose"
-if dpkg -l | grep -qw openmediavault-compose; then
-    info "OMV-Compose déjà installé. Mise à jour si nécessaire..."
-    sudo apt install --only-upgrade -y openmediavault-compose
-    version=$(apt list --installed openmediavault-compose 2>/dev/null | grep openmediavault-compose | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}openmediavault-compose $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}OMV-Compose mis à jour ${GREEN}Fait${NC}")
-else
-    info "OMV-Compose non installé. Installation..."
-    sudo apt install -y openmediavault-compose
-    version=$(apt list --installed openmediavault-compose 2>/dev/null | grep openmediavault-compose | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}openmediavault-compose $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}OMV-Compose installé ${GREEN}Fait${NC}")
-fi
-
-info "Vérification du plugin Docker Compose"
-if ! dpkg -l | grep -qw docker-compose-plugin; then
-    info "Docker Compose plugin non trouvé. Installation..."
-    sudo apt update && sudo apt install -y docker-compose-plugin
-    version=$(apt list --installed docker-compose-plugin 2>/dev/null | grep docker-compose-plugin | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}docker-compose-plugin $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}Docker Compose plugin installé ${GREEN}Fait${NC}")
-else
-    version=$(apt list --installed docker-compose-plugin 2>/dev/null | grep docker-compose-plugin | awk -F'/' '{print $2}')
-    echo -e "${LIGHT_BLUE}docker-compose-plugin $version ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}Docker Compose plugin déjà installé ${GREEN}Fait${NC}")
-fi
+check_pkg "openmediavault-compose"
+check_pkg "docker-compose-plugin"
 
 # ---------------- Nettoyage ----------------
 info "Nettoyage des packages inutiles"
@@ -183,4 +148,4 @@ for task in "${TASKS_DONE[@]}"; do
 done
 echo -e "${BLUE}====================================================================${NC}"
 
-success "Partie 1 terminée : OMV-Config-Base prête avec GPU ROCm, KVM et Docker Compose"
+success "Script complet terminé : OMV + GPU ROCm + KVM + Docker Compose + Python venv + ONNX Runtime"
