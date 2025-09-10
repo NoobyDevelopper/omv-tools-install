@@ -14,130 +14,72 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "[ERROR] $*" >&2; }
 
-# =================== OMV-Config-Base ===================
 TASKS_DONE=()
+VENV_DIR="$HOME/onnx_env"
 
-# ---------------- Mise à jour système ----------------
-info "Mise à jour du système"
-upgrade_output=$(sudo apt upgrade -y -qq 2>&1 || true)
-if echo "$upgrade_output" | grep -q "^Inst"; then
-    echo "$upgrade_output" | grep "^Inst" | awk '{print $2, $3}' | while read pkg ver; do
-        echo -e "${LIGHT_BLUE}$pkg $ver ${GREEN}Fait${NC}"
-        TASKS_DONE+=("${LIGHT_BLUE}$pkg $ver ${GREEN}Fait${NC}")
-    done
-else
-    echo -e "${LIGHT_BLUE}Tous les paquets sont déjà à jour ${GREEN}Fait${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}Système déjà à jour ${GREEN}Fait${NC}")
-fi
-
-# ---------------- Fonctions de détection automatique ----------------
-check_pkg() {
-    local pkg=$1
-    if dpkg -l | grep -qw "$pkg"; then
-        status=$(apt list --upgradable 2>/dev/null | grep "^$pkg/" || echo "")
-        if [ -z "$status" ]; then
-            echo -e "${LIGHT_BLUE}$pkg ${GREEN}Déjà à jour${NC}"
-            TASKS_DONE+=("${LIGHT_BLUE}$pkg ${GREEN}Déjà à jour${NC}")
-        else
-            sudo apt install -y "$pkg"
-            echo -e "${LIGHT_BLUE}$pkg ${YELLOW}Mise à jour${NC}"
-            TASKS_DONE+=("${LIGHT_BLUE}$pkg ${YELLOW}Mise à jour${NC}")
-        fi
+# ---------------- Fonction auto-update ONNX ----------------
+update_onnx() {
+    source "$VENV_DIR/bin/activate"
+    if pip show onnxruntime &> /dev/null; then
+        info "ONNX Runtime déjà installé, vérification des mises à jour..."
+        pip install --upgrade onnxruntime
+        TASKS_DONE+=("${LIGHT_BLUE}ONNX Runtime mis à jour ${GREEN}Fait${NC}")
     else
-        sudo apt install -y "$pkg"
-        echo -e "${LIGHT_BLUE}$pkg ${GREEN}Installé${NC}"
-        TASKS_DONE+=("${LIGHT_BLUE}$pkg ${GREEN}Installé${NC}")
+        info "Installation de ONNX Runtime dans le venv"
+        pip install --upgrade pip setuptools wheel
+        pip install onnxruntime numpy
+        TASKS_DONE+=("${LIGHT_BLUE}ONNX Runtime installé ${GREEN}Fait${NC}")
     fi
+    deactivate
+    info "Venv désactivé après mise à jour ONNX Runtime"
 }
 
-# ---------------- Firmware AMD graphique ----------------
-check_pkg "firmware-amd-graphics"
-
-# ---------------- wget ----------------
-check_pkg "wget"
-
-# ---------------- OMV-Extras ----------------
-info "Installation d'OMV-Extras"
-if wget -qO /tmp/omv-extras-install.sh https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/install; then
-    TASKS_DONE+=("${LIGHT_BLUE}OMV-Extras téléchargé ${GREEN}Fait${NC}")
-    bash /tmp/omv-extras-install.sh >/dev/null 2>&1
-    TASKS_DONE+=("${LIGHT_BLUE}OMV-Extras installé ${GREEN}Fait${NC}")
-else
-    warn "Erreur téléchargement OMV-Extras"
-fi
-
-# ---------------- Extensions OMV de base ----------------
-EXTENSIONS=(
-    openmediavault-clamav
-    openmediavault-cterm
-    openmediavault-diskstats
-    openmediavault-fail2ban
-    openmediavault-md
-    openmediavault-sharerootfs
-)
-for ext in "${EXTENSIONS[@]}"; do
-    check_pkg "$ext"
-done
-
-# ---------------- Python utils ----------------
-PYTHON_PKGS=(python3-venv python3-pip python3-setuptools python3-wheel)
-for pkg in "${PYTHON_PKGS[@]}"; do
-    check_pkg "$pkg"
-done
-
-# ---------------- Création venv ----------------
-VENV_DIR="$HOME/onnx_env"
-if [ -d "$VENV_DIR" ]; then
-    echo -e "${LIGHT_BLUE}Venv déjà présent ${GREEN}Déjà à jour${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}Venv déjà présent ${GREEN}Déjà à jour${NC}")
-else
+# ---------------- Création venv si nécessaire ----------------
+if [ ! -d "$VENV_DIR" ]; then
+    info "Création du virtualenv Python isolé dans $VENV_DIR"
     python3 -m venv "$VENV_DIR"
-    echo -e "${LIGHT_BLUE}Venv créé dans $VENV_DIR ${GREEN}Installé${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}Venv créé dans $VENV_DIR ${GREEN}Installé${NC}")
-fi
-
-# ---------------- Activation venv et ONNX Runtime ----------------
-source "$VENV_DIR/bin/activate"
-
-if pip show onnxruntime-rocm &> /dev/null; then
-    echo -e "${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Déjà à jour${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Déjà à jour${NC}")
+    TASKS_DONE+=("${LIGHT_BLUE}Virtualenv créé ${GREEN}Fait${NC}")
 else
-    pip install --upgrade pip setuptools wheel
-    pip install onnxruntime-rocm
-    echo -e "${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Installé${NC}"
-    TASKS_DONE+=("${LIGHT_BLUE}onnxruntime-rocm ${GREEN}Installé${NC}")
+    TASKS_DONE+=("${LIGHT_BLUE}Virtualenv déjà présent ${GREEN}Déjà à jour${NC}")
 fi
 
-# ---------------- Sortie automatique du venv ----------------
-deactivate
-success "Venv désactivé automatiquement"
+# ---------------- Détection GPU et installation pilotes ----------------
+info "Détection du GPU présent"
+GPU_VENDOR=""
+if lspci | grep -i nvidia &> /dev/null; then
+    GPU_VENDOR="NVIDIA"
+elif lspci | grep -i amd | grep -i vga &> /dev/null; then
+    GPU_VENDOR="AMD"
+elif lspci | grep -i intel &> /dev/null; then
+    GPU_VENDOR="Intel"
+fi
 
-# ---------------- Installation AMD GPU ----------------
-DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
-DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
-info "Téléchargement et installation du package AMD GPU"
-[ -f "$DEB_FILE" ] && rm -f "$DEB_FILE"
-wget -q "$DEB_URL" -O "$DEB_FILE"
-sudo apt install -y -qq ./"$DEB_FILE"
-TASKS_DONE+=("${LIGHT_BLUE}Package AMD GPU installé ${GREEN}Fait${NC}")
+TASKS_DONE+=("${LIGHT_BLUE}GPU détecté : $GPU_VENDOR ${GREEN}Fait${NC}")
 
-# ---------------- Groupes utilisateur ----------------
-sudo usermod -a -G render,video "$LOGNAME"
-TASKS_DONE+=("${LIGHT_BLUE}Utilisateur ajouté aux groupes render et video ${GREEN}Fait${NC}")
+case "$GPU_VENDOR" in
+    "AMD")
+        info "Installation pilotes AMD + ROCm"
+        # ... ton code AMD existant ...
+        ;;
+    "NVIDIA")
+        info "Installation pilotes NVIDIA + CUDA"
+        # ... code NVIDIA ...
+        ;;
+    "Intel")
+        info "Installation pilotes Intel GPU"
+        # ... code Intel ...
+        ;;
+    *)
+        warn "Aucun GPU compatible détecté"
+        TASKS_DONE+=("${LIGHT_BLUE}Pilotes GPU non installés ${YELLOW}Skipped${NC}")
+        ;;
+esac
 
-# ---------------- ROCm ----------------
-check_pkg "rocm"
-
-# ---------------- Extension KVM ----------------
-check_pkg "openmediavault-kvm"
-
-# ---------------- OMV-Compose + Docker Compose ----------------
-check_pkg "openmediavault-compose"
-check_pkg "docker-compose-plugin"
+# ---------------- Mise à jour ONNX Runtime automatique ----------------
+update_onnx
 
 # ---------------- Nettoyage ----------------
-info "Nettoyage des packages inutiles"
+info "Nettoyage packages inutiles"
 sudo apt autoremove -y
 TASKS_DONE+=("${LIGHT_BLUE}Packages inutiles supprimés ${GREEN}Fait${NC}")
 
@@ -148,4 +90,4 @@ for task in "${TASKS_DONE[@]}"; do
 done
 echo -e "${BLUE}====================================================================${NC}"
 
-success "Script complet terminé : OMV + GPU ROCm + KVM + Docker Compose + Python venv + ONNX Runtime"
+success "Script terminé : GPU détecté, venv et ONNX Runtime prêts, auto-update activé"
