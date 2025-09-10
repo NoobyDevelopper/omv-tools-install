@@ -1,11 +1,11 @@
+version: "3.8"
+
 services:
   whisper:
     container_name: whisper
     image: rhasspy/wyoming-whisper:latest
-    command: >
-      /bin/bash -c "
-      /workspace/scripts/install-gpu-tools.sh &&
-      exec whisper --model small --language fr --onnxruntime --data-dir /data --uri http://0.0.0.0:10300"
+    # Commande minimale pour démarrer sans arguments
+    command: /bin/bash -c "sleep infinity"
     volumes:
       - /docker_DATA/whisper-data:/data
       - /docker_DATA/scripts:/workspace/scripts
@@ -21,10 +21,8 @@ services:
   piper:
     container_name: piper
     image: rhasspy/wyoming-piper:latest
-    command: >
-      /bin/bash -c "
-      /workspace/scripts/install-gpu-tools.sh &&
-      exec piper --voice fr-siwis-medium --onnxruntime --data-dir /data --piper piper"
+    # Commande minimale pour démarrer sans arguments
+    command: /bin/bash -c "sleep infinity"
     volumes:
       - /docker_DATA/piper-data:/data
       - /docker_DATA/scripts:/workspace/scripts
@@ -38,5 +36,8 @@ services:
       - 127.0.0.1:10200:10200
 
 networks:
+  default:
+    driver: bridge
+
   default:
     driver: bridge
