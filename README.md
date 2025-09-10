@@ -10,7 +10,7 @@ POUR OMV 7.4.17 AMDGPU tester RADEON RX 7600XT
         sudo ./launcher.sh
 
 
-recuper le launcher.sh
+recuper le launcher.sh  ( le launcher peut buguer donc prendre direct script omv-config-base )
 
 pas dev fait par chatgpt je decline toute responsabilite
 
