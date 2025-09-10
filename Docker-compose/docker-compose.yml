@@ -1,11 +1,13 @@
+version: "3.9"
+
 services:
   whisper:
     container_name: whisper
     image: rhasspy/wyoming-whisper:latest
     command: ["/bin/bash", "-c", "/workspace/scripts/install-gpu-tools.sh && exec whisper --model small --language fr --onnxruntime"]
     volumes:
-      - ./whisper-data:/data
-      - ./scripts:/workspace/scripts
+      - /docker_DATA/whisper-data:/data
+      - /docker_DATA/scripts:/workspace/scripts
     environment:
       - TZ=Europe/Paris
     restart: unless-stopped
@@ -23,8 +25,8 @@ services:
     image: rhasspy/wyoming-piper:latest
     command: ["/bin/bash", "-c", "/workspace/scripts/install-gpu-tools.sh && exec piper --voice fr-siwis-medium --onnxruntime"]
     volumes:
-      - ./piper-data:/data
-      - ./scripts:/workspace/scripts
+      - /docker_DATA/piper-data:/data
+      - /docker_DATA/scripts:/workspace/scripts
     environment:
       - TZ=Europe/Paris
     restart: unless-stopped
