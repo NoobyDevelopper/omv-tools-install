@@ -16,7 +16,6 @@ services:
       - /dev/dri
     group_add:
       - video
-      - render
 
   piper:
     container_name: piper
@@ -35,7 +34,6 @@ services:
       - /dev/dri
     group_add:
       - video
-      - render
 
 networks:
   default:
