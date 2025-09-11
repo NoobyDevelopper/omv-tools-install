@@ -9,6 +9,7 @@ LIGHT_BLUE='\033[1;36m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
 RED='\033[1;31m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 info()    { echo -e "${BLUE}[INFO]${NC} ${LIGHT_BLUE}$*${NC}"; }
@@ -24,7 +25,6 @@ show_progress() {
     local percent=$(( done * 100 / total ))
     local filled=$(( percent * width / 100 ))
     local empty=$(( width - filled ))
-
     printf "\r${BLUE}[PROGRESS]${NC} ${BLUE}|"
     printf '%0.s█' $(seq 1 $filled)
     printf '%0.s ' $(seq 1 $empty)
@@ -38,11 +38,11 @@ mark_warn() { CHECKLIST["$1"]="⚠️"; }
 mark_fail() { CHECKLIST["$1"]="❌"; }
 
 show_checklist() {
-    echo -e "\n${BLUE}==================== Checklist ====================${NC}"
+    echo -e "\n${CYAN}==================== Checklist ====================${NC}"
     for task in "${!CHECKLIST[@]}"; do
         echo -e "${CHECKLIST[$task]} $task"
     done
-    echo -e "${BLUE}==================================================${NC}\n"
+    echo -e "${CYAN}==================================================${NC}\n"
 }
 
 TASKS_TOTAL=12
@@ -72,10 +72,8 @@ STEPS=(
     "OMV-KVM"
     "OMV-Compose + Docker"
     "Nettoyage"
-    "Venv + ONNX"
+    "Venv"
 )
-
-# ==================== Déroulement ====================
 
 # --- Mise à jour système ---
 info "Mise à jour du système"
@@ -148,33 +146,27 @@ if echo "$GPU_VENDOR" | grep -qi "amd"; then
     info "GPU AMD détecté"
     DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
     DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
-
     wget -q "$DEB_URL" -O "$DEB_FILE"
     sudo apt install -y ./"$DEB_FILE"
-
     sudo apt update -qq
     sudo apt install -y python3-setuptools python3-wheel
     sudo usermod -a -G render,video "$LOGNAME"
-
     if sudo apt install -y rocm; then
         success "Pilotes AMD + ROCm installés"
         finish_task "GPU Drivers + ROCm" done
     else
         finish_task "GPU Drivers + ROCm" fail
     fi
-
 elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
     info "GPU NVIDIA détecté"
     sudo apt install -y -qq nvidia-driver nvidia-cuda-toolkit
     success "Pilotes NVIDIA + CUDA installés"
     finish_task "GPU Drivers + ROCm" done
-
 elif echo "$GPU_VENDOR" | grep -qi "intel"; then
     info "GPU Intel détecté"
     sudo apt install -y -qq intel-gpu-tools
     success "Pilotes Intel installés"
     finish_task "GPU Drivers + ROCm" done
-
 else
     warn "Aucun GPU pris en charge détecté"
     finish_task "GPU Drivers + ROCm" warn
@@ -204,30 +196,19 @@ sudo apt autoremove -y -qq
 success "Nettoyage effectué"
 finish_task "Nettoyage" done
 
-# --- Venv + ONNX ---
+# --- Venv ---
 VENV_DIR="$HOME/onnx_env"
 info "Vérification du venv"
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
     info "Venv créé"
 fi
-
 source "$VENV_DIR/bin/activate"
-pip install --upgrade pip
-
-info "Installation/MAJ ONNX Runtime"
-if echo "$GPU_VENDOR" | grep -qi "amd"; then
-    pip install --upgrade onnxruntime onnx numpy
-elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
-    pip install --upgrade onnxruntime-gpu onnx numpy
-else
-    pip install --upgrade onnxruntime onnx numpy
-fi
-
+pip install --upgrade pip setuptools wheel numpy
 deactivate
-success "Venv + ONNX installé et à jour"
-finish_task "Venv + ONNX" done
+success "Venv prêt à l'emploi"
+finish_task "Venv" done
 
-# ==================== Checklist ====================
+# ==================== Checklist finale ====================
 show_checklist
 success "Configuration terminée !"
