@@ -8,11 +8,11 @@ WORKDIR="$HOME/onnxruntime_build"
 REPO="$WORKDIR/onnxruntime"
 NPROC=$(nproc)
 
-log()     { echo -e "[INFO] $*"; }
+log() { echo -e "[INFO] $*"; }
 success() { echo -e "[SUCCESS] $*"; }
-error()   { echo -e "[ERROR] $*" >&2; }
+error() { echo -e "[ERROR] $*" >&2; }
 
-# ==================== FUNCTIONS ====================
+# ==================== PREPARE VENV ====================
 prepare_venv() {
     local VENV_DIR=$1
     log "Préparation du venv : $VENV_DIR"
@@ -22,59 +22,79 @@ prepare_venv() {
     deactivate
 }
 
-clone_repo() {
-    mkdir -p "$WORKDIR"
-    cd "$WORKDIR"
-    if [ ! -d "$REPO" ]; then
-        log "Clonage du dépôt ONNX Runtime..."
-        git clone --recursive https://github.com/microsoft/onnxruntime
-    fi
-    cd "$REPO"
-    git fetch origin
-    git checkout main || git checkout master || true
-    git pull --ff-only || true
+prepare_venv "$CPU_VENV"
+prepare_venv "$GPU_VENV"
 
-    # Retry simple pour submodules
-    for i in {1..3}; do
-        rm -f .git/config.lock || true
-        git submodule sync --recursive && git submodule update --init --recursive && break || sleep 2
-    done
-}
+# ==================== CLONE / UPDATE REPO ====================
+mkdir -p "$WORKDIR"
+cd "$WORKDIR"
 
-clean_builds() {
-    log "Nettoyage des anciens fichiers CMake..."
-    rm -rf build_cpu build_gpu
-}
+if [ ! -d "$REPO" ]; then
+    log "Clonage du dépôt ONNX Runtime..."
+    git clone --recursive https://github.com/microsoft/onnxruntime
+fi
 
+cd "$REPO"
+git fetch origin
+git checkout main || git checkout master || true
+git pull --ff-only || true
+git submodule sync --recursive
+git submodule update --init --recursive
+
+# ==================== CLEAN BUILDS ====================
+log "Nettoyage des anciens fichiers CMake..."
+rm -rf build_cpu build_gpu
+
+# ==================== BUILD FUNCTIONS ====================
 build_cpu() {
     log "Compilation ONNX Runtime (CPU)..."
     source "$CPU_VENV/bin/activate"
-    python tools/ci_build/build.py \
-        --build_dir build_cpu --config Release --build_wheel --update --build \
-        --parallel "$NPROC" --skip_tests || error "Compilation CPU échouée"
+    ./build.sh \
+        --allow_running_as_root \
+        --build_dir build_cpu \
+        --config Release \
+        --build_wheel \
+        --update \
+        --build \
+        --parallel "$NPROC" \
+        --skip_tests \
+        --cmake_generator Ninja || error "Compilation CPU échouée"
     deactivate
     success "Compilation CPU terminée"
 }
 
 build_gpu() {
-    if [ -d "/opt/rocm" ] || [ -n "${ROCM_HOME:-}" ]; then
-        ROCM_DIR="${ROCM_HOME:-/opt/rocm}"
-        log "Compilation ONNX Runtime (ROCm GPU) avec ROCm à $ROCM_DIR..."
-        export ROCM_HOME="$ROCM_DIR"
-        source "$GPU_VENV/bin/activate"
-        python tools/ci_build/build.py \
-            --build_dir build_gpu --config Release --build_wheel --update --build \
-            --parallel "$NPROC" --skip_tests --use_rocm || error "Compilation GPU échouée"
-        deactivate
-        success "Compilation GPU terminée"
-    else
-        log "ROCm non détecté. Compilation GPU ignorée."
-    fi
+    log "Compilation ONNX Runtime (ROCm GPU)..."
+    source "$GPU_VENV/bin/activate"
+    ./build.sh \
+        --allow_running_as_root \
+        --build_dir build_gpu \
+        --config Release \
+        --build_wheel \
+        --update \
+        --build \
+        --parallel "$NPROC" \
+        --skip_tests \
+        --use_rocm \
+        --cmake_generator Ninja || error "Compilation GPU échouée"
+    deactivate
+    success "Compilation GPU terminée"
 }
 
+# ==================== RUN BUILDS IN PARALLEL ====================
+build_cpu &
+PID_CPU=$!
+build_gpu &
+PID_GPU=$!
+
+wait $PID_CPU || true
+wait $PID_GPU || true
+
+# ==================== INSTALL WHEELS ====================
 install_wheel() {
     local VENV=$1
     local BUILDDIR=$2
+    local WHEEL
     WHEEL=$(find "$BUILDDIR" -name "onnxruntime-*.whl" | sort | tail -n 1 || true)
     if [ -f "$WHEEL" ]; then
         source "$VENV/bin/activate"
@@ -86,24 +106,8 @@ install_wheel() {
     fi
 }
 
-# ==================== EXECUTION ====================
-prepare_venv "$CPU_VENV"
-prepare_venv "$GPU_VENV"
-
-clone_repo
-clean_builds
-
-# Compilation parallèle
-build_cpu & PID_CPU=$!
-build_gpu & PID_GPU=$!
-wait $PID_CPU || true
-wait $PID_GPU || true
-
-# Installation des wheels
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-if [ -d "$REPO/build_gpu" ]; then
-    install_wheel "$GPU_VENV" "$REPO/build_gpu"
-fi
+install_wheel "$GPU_VENV" "$REPO/build_gpu"
 
 # ==================== CHECKLIST ====================
 echo -e "\n# ==================== Checklist ===================="
