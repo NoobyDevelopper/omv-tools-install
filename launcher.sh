@@ -1,6 +1,6 @@
 #!/bin/bash
 # launcher.sh - Menu stylé avec bordures, noms de scripts et checklist
-
+clear
 # Couleurs
 GREEN='\033[1;32m'
 CYAN='\033[0;36m'
