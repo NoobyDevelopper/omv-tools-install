@@ -46,7 +46,6 @@ log "Nettoyage des anciens fichiers CMake..."
 rm -rf build_cpu build_gpu
 
 # ==================== BUILD FUNCTIONS ====================
-# Combine les flags souhaités sans écraser les existants
 append_cxx_flags() {
     local FLAGS="-Wno-unused-parameter -Wunused-variable"
     if [ -n "${CMAKE_CXX_FLAGS-}" ]; then
@@ -68,7 +67,9 @@ build_cpu() {
         --parallel "$NPROC" \
         --skip_tests \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" ONNXRUNTIME_DISABLE_WARNINGS=ON
+        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" \
+                             ONNXRUNTIME_DISABLE_WARNINGS=ON \
+                             ONNX_DISABLE_WARNINGS=ON
     deactivate
     success "Compilation CPU terminée"
 }
@@ -87,7 +88,9 @@ build_gpu() {
         --skip_tests \
         --use_rocm \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" ONNXRUNTIME_DISABLE_WARNINGS=ON
+        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" \
+                             ONNXRUNTIME_DISABLE_WARNINGS=ON \
+                             ONNX_DISABLE_WARNINGS=ON
     deactivate
     success "Compilation GPU terminée"
 }
@@ -97,6 +100,9 @@ build_cpu &
 PID_CPU=$!
 build_gpu &
 PID_GPU=$!
+
+# Gestion propre de Ctrl+C pour tuer les deux builds
+trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU $PID_GPU 2>/dev/null; exit 1' SIGINT
 
 wait $PID_CPU
 wait $PID_GPU
