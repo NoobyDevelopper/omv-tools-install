@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-
+clear
 # ==================== Couleurs ====================
 BLUE='\033[1;34m'
 LIGHT_BLUE='\033[1;36m'
