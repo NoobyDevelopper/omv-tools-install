@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# ========== Couleurs ==========
+# ==================== Couleurs ====================
 BLUE='\033[1;34m'
 LIGHT_BLUE='\033[1;36m'
 GREEN='\033[1;32m'
@@ -9,13 +9,12 @@ YELLOW='\033[1;33m'
 RED='\033[1;31m'
 NC='\033[0m'
 
-# ========== Fonctions log ==========
 info()    { echo -e "${BLUE}[INFO]${NC} ${LIGHT_BLUE}$*${NC}"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR] $*${NC}"; }
 
-# ========== Progress Bar ==========
+# ==================== Progress Bar ====================
 show_progress() {
     local done=$1
     local total=$2
@@ -30,7 +29,7 @@ show_progress() {
     printf "| %3d%% (%d/%d)${NC}" $percent $done $total
 }
 
-# =================== Checklist dynamique ===================
+# ==================== Checklist ====================
 declare -A CHECKLIST
 mark_done() { CHECKLIST["$1"]="✅"; }
 mark_warn() { CHECKLIST["$1"]="⚠️"; }
@@ -44,10 +43,8 @@ show_checklist() {
     echo -e "${BLUE}==================================================${NC}\n"
 }
 
-# ========== Gestion des tâches ==========
 TASKS_TOTAL=12
 TASKS_DONE_COUNT=0
-
 finish_task() {
     local task="$1"
     local status="$2"
@@ -60,7 +57,7 @@ finish_task() {
     show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
 }
 
-# =================== Liste des étapes ===================
+# ==================== Étapes ====================
 STEPS=(
     "Mise à jour système"
     "Firmware AMD"
@@ -68,7 +65,7 @@ STEPS=(
     "OMV-Extras"
     "Extensions OMV"
     "Python utils"
-    "GPU Drivers"
+    "GPU Drivers + ROCm"
     "Groupes utilisateur"
     "OMV-KVM"
     "OMV-Compose + Docker"
@@ -76,7 +73,7 @@ STEPS=(
     "Venv + ONNX"
 )
 
-# =================== Déroulement ===================
+# ==================== Déroulement ====================
 
 # --- Mise à jour système ---
 info "Mise à jour du système"
@@ -141,7 +138,7 @@ else
     finish_task "Python utils" fail
 fi
 
-# --- GPU Detection & Drivers ---
+# --- GPU Detection + ROCm ---
 info "Détection GPU"
 GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
 
@@ -149,26 +146,36 @@ if echo "$GPU_VENDOR" | grep -qi "amd"; then
     info "GPU AMD détecté"
     DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
     DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
+
     wget -q "$DEB_URL" -O "$DEB_FILE"
-    sudo apt install -y -qq ./"$DEB_FILE" rocm
-    success "Pilotes AMD + ROCm installés"
-    finish_task "GPU Drivers" done
+    sudo apt install -y ./"$DEB_FILE"
+
+    sudo apt update -qq
+    sudo apt install -y python3-setuptools python3-wheel
+    sudo usermod -a -G render,video "$LOGNAME"
+
+    if sudo apt install -y rocm; then
+        success "Pilotes AMD + ROCm installés"
+        finish_task "GPU Drivers + ROCm" done
+    else
+        finish_task "GPU Drivers + ROCm" fail
+    fi
 
 elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
     info "GPU NVIDIA détecté"
     sudo apt install -y -qq nvidia-driver nvidia-cuda-toolkit
     success "Pilotes NVIDIA + CUDA installés"
-    finish_task "GPU Drivers" done
+    finish_task "GPU Drivers + ROCm" done
 
 elif echo "$GPU_VENDOR" | grep -qi "intel"; then
     info "GPU Intel détecté"
     sudo apt install -y -qq intel-gpu-tools
     success "Pilotes Intel installés"
-    finish_task "GPU Drivers" done
+    finish_task "GPU Drivers + ROCm" done
 
 else
     warn "Aucun GPU pris en charge détecté"
-    finish_task "GPU Drivers" warn
+    finish_task "GPU Drivers + ROCm" warn
 fi
 
 # --- Groupes utilisateur ---
@@ -191,9 +198,8 @@ sudo apt autoremove -y -qq
 success "Nettoyage effectué"
 finish_task "Nettoyage" done
 
-# --- Venv + ONNX avec auto-détection GPU et mise à jour automatique ---
+# --- Venv + ONNX ---
 VENV_DIR="$HOME/onnx_env"
-
 info "Vérification du venv"
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
@@ -203,13 +209,7 @@ fi
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 
-info "Vérification ONNX Runtime"
-if pip show onnxruntime >/dev/null 2>&1 || pip show onnxruntime-gpu >/dev/null 2>&1; then
-    info "ONNX Runtime déjà installé, mise à jour..."
-else
-    info "ONNX Runtime non présent, installation..."
-fi
-
+info "Installation/MAJ ONNX Runtime"
 if echo "$GPU_VENDOR" | grep -qi "amd"; then
     pip install --upgrade onnxruntime onnx numpy
 elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
@@ -219,9 +219,9 @@ else
 fi
 
 deactivate
-success "Venv + ONNX installé et à jour, prêt pour Docker Compose avec --onnxruntime"
+success "Venv + ONNX installé et à jour"
 finish_task "Venv + ONNX" done
 
-# =================== Affichage checklist ===================
+# ==================== Checklist ====================
 show_checklist
 success "Configuration terminée !"
