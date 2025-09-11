@@ -101,11 +101,12 @@ PID_CPU=$!
 build_gpu &
 PID_GPU=$!
 
-# Gestion propre de Ctrl+C pour tuer les deux builds
+# Gestion Ctrl+C pour tuer les deux builds
 trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU $PID_GPU 2>/dev/null; exit 1' SIGINT
 
-wait $PID_CPU
-wait $PID_GPU
+# Filtrer les warnings des sous-modules
+wait $PID_CPU 2>&1 | grep -v "_deps/onnx-src"
+wait $PID_GPU 2>&1 | grep -v "_deps/onnx-src"
 
 # ==================== INSTALL WHEELS ====================
 install_wheel() {
