@@ -13,6 +13,7 @@ NC='\033[0m' # No Color
 # ==================== Scripts ====================
 SCRIPT1="omv-config-base.sh"
 SCRIPT2="docker-ollama-base.sh"
+SCRIPT3="onnxruntime-compilation.sh"
 
 # ==================== Checklist dynamique ====================
 declare -A CHECKLIST
@@ -53,7 +54,9 @@ run_script() {
 # ==================== Fonctions parties ====================
 partie1() { run_script "$SCRIPT1"; }
 partie2() { run_script "$SCRIPT2"; }
+partie3() { run_script "$SCRIPT3"; }
 partie1_2() { partie1; partie2; }
+partie1_3() { partie1; partie3; }
 
 # ==================== Menu ====================
 echo -e "${YELLOW}#############################################${NC}"
@@ -62,6 +65,8 @@ echo -e "${YELLOW}#############################################${NC}"
 echo "1) Partie 1  -> $SCRIPT1"
 echo "2) Partie 2  -> $SCRIPT2"
 echo "3) Partie 1+2 -> $SCRIPT1 + $SCRIPT2"
+echo "4) Partie 1+3 -> $SCRIPT1 + $SCRIPT3"
+echo "5) Partie 3  -> $SCRIPT3"
 echo -e "${YELLOW}#############################################${NC}"
 
 # Timer 10s pour choix par défaut
@@ -82,6 +87,8 @@ case $CHOIX in
     1) partie1 ;;
     2) partie2 ;;
     3) partie1_2 ;;
+    4) partie1_3 ;;
+    5) partie3 ;;
     *) echo -e "${RED}Option invalide, exécution Partie 1 par défaut${NC}"; partie1 ;;
 esac
 
