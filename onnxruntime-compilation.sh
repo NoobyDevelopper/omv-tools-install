@@ -46,6 +46,15 @@ log "Nettoyage des anciens fichiers CMake..."
 rm -rf build_cpu build_gpu
 
 # ==================== BUILD FUNCTIONS ====================
+# Ajoute nos flags sans écraser d’éventuelles options existantes
+append_cxx_flags() {
+    local FLAGS="-Wno-unused-parameter -Wunused-variable"
+    if [ -n "${CMAKE_CXX_FLAGS-}" ]; then
+        FLAGS="$CMAKE_CXX_FLAGS $FLAGS"
+    fi
+    echo "$FLAGS"
+}
+
 build_cpu() {
     log "Compilation ONNX Runtime (CPU)..."
     source "$CPU_VENV/bin/activate"
@@ -59,7 +68,7 @@ build_cpu() {
         --parallel "$NPROC" \
         --skip_tests \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)"
     deactivate
     success "Compilation CPU terminée"
 }
@@ -78,7 +87,7 @@ build_gpu() {
         --skip_tests \
         --use_rocm \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)"
     deactivate
     success "Compilation GPU terminée"
 }
