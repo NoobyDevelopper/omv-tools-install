@@ -59,7 +59,7 @@ build_cpu() {
         --parallel "$NPROC" \
         --skip_tests \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter" || error "Compilation CPU échouée"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter -Wno-unused-variable" || error "Compilation CPU échouée"
     deactivate
     success "Compilation CPU terminée"
 }
@@ -78,7 +78,7 @@ build_gpu() {
         --skip_tests \
         --use_rocm \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter" || error "Compilation GPU échouée"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter -Wno-unused-variable" || error "Compilation GPU échouée"
     deactivate
     success "Compilation GPU terminée"
 }
