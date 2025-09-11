@@ -69,9 +69,9 @@ echo "4) Partie 1+3 -> $SCRIPT1 + $SCRIPT3"
 echo "5) Partie 3  -> $SCRIPT3"
 echo -e "${YELLOW}#############################################${NC}"
 
-# Timer 10s pour choix par défaut
+# Timer 20s pour choix par défaut
 CHOIX=""
-for i in {10..1}; do
+for i in {20..1}; do
     printf "\rSélection automatique dans %2d secondes..." "$i"
     read -t 1 -n 1 input || true
     if [[ -n "$input" ]]; then
