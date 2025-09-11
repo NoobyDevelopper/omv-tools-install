@@ -26,7 +26,8 @@ sudo apt install -y -qq \
     python3-dev ninja-build ccache
 
 pip install --upgrade pip
-pip install --upgrade numpy sympy packaging
+pip install --upgrade numpy sympy packaging wheel setuptools
+pip install --upgrade protobuf
 
 # ==================== Source code ====================
 WORKDIR="$HOME/onnxruntime_build"
