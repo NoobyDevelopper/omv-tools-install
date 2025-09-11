@@ -10,7 +10,7 @@ NPROC=$(nproc)
 
 log() { echo -e "[INFO] $*"; }
 success() { echo -e "[SUCCESS] $*"; }
-error() { echo -e "[ERROR] $*" >&2; }
+error() { echo -e "[ERROR] $*" >&2; exit 1; }
 
 # ==================== PREPARE VENV ====================
 prepare_venv() {
@@ -59,8 +59,7 @@ build_cpu() {
         --parallel "$NPROC" \
         --skip_tests \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter -Wno-unused-variable" \
-        > build_cpu.log 2>&1 || error "Compilation CPU échouée"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter"
     deactivate
     success "Compilation CPU terminée"
 }
@@ -79,8 +78,7 @@ build_gpu() {
         --skip_tests \
         --use_rocm \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter -Wno-unused-variable" \
-        > build_gpu.log 2>&1 || error "Compilation GPU échouée"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="-Wno-unused-parameter"
     deactivate
     success "Compilation GPU terminée"
 }
@@ -91,8 +89,8 @@ PID_CPU=$!
 build_gpu &
 PID_GPU=$!
 
-wait $PID_CPU || true
-wait $PID_GPU || true
+wait $PID_CPU
+wait $PID_GPU
 
 # ==================== INSTALL WHEELS ====================
 install_wheel() {
@@ -106,7 +104,7 @@ install_wheel() {
         deactivate
         success "Wheel installé dans $VENV"
     else
-        error "Wheel non trouvé dans $BUILDDIR"
+        error "Wheel non trouvé dans $BUILDDIR, compilation échouée !"
     fi
 }
 
