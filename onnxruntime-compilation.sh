@@ -46,7 +46,7 @@ log "Nettoyage des anciens fichiers CMake..."
 rm -rf build_cpu build_gpu
 
 # ==================== BUILD FUNCTIONS ====================
-# Ajoute nos flags sans écraser d’éventuelles options existantes
+# Combine les flags souhaités sans écraser les existants
 append_cxx_flags() {
     local FLAGS="-Wno-unused-parameter -Wunused-variable"
     if [ -n "${CMAKE_CXX_FLAGS-}" ]; then
@@ -68,7 +68,7 @@ build_cpu() {
         --parallel "$NPROC" \
         --skip_tests \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" ONNXRUNTIME_DISABLE_WARNINGS=ON
     deactivate
     success "Compilation CPU terminée"
 }
@@ -87,7 +87,7 @@ build_gpu() {
         --skip_tests \
         --use_rocm \
         --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)"
+        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" ONNXRUNTIME_DISABLE_WARNINGS=ON
     deactivate
     success "Compilation GPU terminée"
 }
