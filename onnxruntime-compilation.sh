@@ -1,8 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-clear
-
 # ==================== Couleurs ====================
 BLUE='\033[1;34m'
 GREEN='\033[1;32m'
@@ -15,47 +13,47 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*"; }
 
-# ==================== Détection GPU ====================
+# ==================== GPU & CPU ====================
 GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
+CORES=$(nproc)
 info "GPU détecté : $GPU_VENDOR"
+info "Nombre de coeurs CPU : $CORES"
 
 # ==================== Venv ====================
 VENV_DIR="$HOME/onnx_env"
 if [ ! -d "$VENV_DIR" ]; then
-    info "Création du venv"
+    info "Création du venv..."
     python3 -m venv "$VENV_DIR"
+    success "Venv créé dans $VENV_DIR"
 fi
-
 source "$VENV_DIR/bin/activate"
+pip install --upgrade pip setuptools wheel packaging numpy ninja
 
-# ==================== Packages Python ====================
-info "Installation / mise à jour des packages Python nécessaires"
-pip install --upgrade pip setuptools wheel packaging numpy
-
-# ==================== Dépendances systèmes ====================
-info "Installation dépendances systèmes"
-sudo apt update -qq
-sudo apt install -y -qq build-essential cmake git ninja-build ccache python3-dev protobuf-compiler libprotobuf-dev wget lsb-release gpg || true
-
-# Vérification version CMake >= 3.28
-CMAKE_VER=$(cmake --version | head -n1 | awk '{print $3}')
-REQUIRED_VER="3.28.0"
-if printf '%s\n%s\n' "$REQUIRED_VER" "$CMAKE_VER" | sort -V | head -n1 | grep -q "$REQUIRED_VER"; then
-    info "CMake version $CMAKE_VER ok"
-else
-    warn "CMake version $CMAKE_VER insuffisante, installation mise à jour"
-    # Installation CMake récente
-    wget -q https://github.com/Kitware/CMake/releases/download/v3.28.5/cmake-3.28.5-linux-x86_64.sh -O /tmp/cmake.sh
-    sudo bash /tmp/cmake.sh --skip-license --prefix=/usr/local
+# ==================== Vérification CMake ====================
+CMAKE_REQUIRED=3.28
+CMAKE_CURRENT=$(cmake --version | head -n1 | awk '{print $3}')
+version_ge() { printf '%s\n%s\n' "$2" "$1" | sort -V -C; }
+if ! version_ge "$CMAKE_CURRENT" "$CMAKE_REQUIRED"; then
+    info "Mise à jour de CMake..."
+    TMP_DIR=$(mktemp -d)
+    cd "$TMP_DIR"
+    CMAKE_VER=3.31.0
+    wget -q https://github.com/Kitware/CMake/releases/download/v$CMAKE_VER/cmake-$CMAKE_VER-linux-x86_64.sh
+    chmod +x cmake-$CMAKE_VER-linux-x86_64.sh
+    ./cmake-$CMAKE_VER-linux-x86_64.sh --skip-license --prefix=/usr/local
+    hash -r
+    success "CMake mis à jour vers $CMAKE_VER"
+    cd -
 fi
 
-# ==================== Source ONNX Runtime ====================
+# ==================== Build Dir ====================
 WORKDIR="$HOME/onnxruntime_build"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 
+# ==================== Clone ONNX Runtime ====================
 if [ ! -d "onnxruntime" ]; then
-    info "Clonage dépôt ONNX Runtime"
+    info "Clonage du dépôt ONNX Runtime..."
     git clone --recursive https://github.com/microsoft/onnxruntime
 fi
 cd onnxruntime
@@ -63,34 +61,71 @@ git submodule update --init --recursive
 git clean -xfd || true
 git reset --hard HEAD
 
-# ==================== Compilation ====================
-info "Début compilation ONNX Runtime"
-BUILD_CMD="./build.sh --config Release --build_wheel --update --build --parallel --allow_running_as_root"
+BUILD_DIR="$WORKDIR/build"
+mkdir -p "$BUILD_DIR/cpu" "$BUILD_DIR/gpu"
 
+# ==================== Compilation CPU ====================
+info "Lancement compilation CPU..."
+python3 tools/ci_build/build.py \
+    --update \
+    --build \
+    --build_dir "$BUILD_DIR/cpu" \
+    --config Release \
+    --parallel $CORES \
+    --skip_tests \
+    --allow_running_as_root &
+CPU_PID=$!
+
+# ==================== Compilation GPU ====================
+GPU_PID=""
 if echo "$GPU_VENDOR" | grep -qi "amd"; then
-    info "Build ROCm"
-    BUILD_CMD+=" --use_rocm"
+    info "Compilation GPU AMD ROCm..."
+    python3 tools/ci_build/build.py \
+        --update \
+        --build \
+        --build_dir "$BUILD_DIR/gpu" \
+        --config Release \
+        --parallel $CORES \
+        --skip_tests \
+        --use_rocm \
+        --allow_running_as_root &
+    GPU_PID=$!
 elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
-    info "Build CUDA"
-    BUILD_CMD+=" --use_cuda"
+    info "Compilation GPU NVIDIA CUDA..."
+    python3 tools/ci_build/build.py \
+        --update \
+        --build \
+        --build_dir "$BUILD_DIR/gpu" \
+        --config Release \
+        --parallel $CORES \
+        --skip_tests \
+        --use_cuda \
+        --allow_running_as_root &
+    GPU_PID=$!
 else
-    info "Build CPU uniquement"
+    warn "Aucun GPU compatible détecté, compilation CPU seule."
 fi
 
-# Exécution
-info "Exécution : $BUILD_CMD"
-$BUILD_CMD
+# ==================== Attente des compilations ====================
+wait $CPU_PID
+success "Compilation CPU terminée."
+if [ -n "${GPU_PID}" ]; then
+    wait $GPU_PID
+    success "Compilation GPU terminée."
+fi
 
-# ==================== Installation wheel ====================
-WHEEL=$(find build -name "onnxruntime-*.whl" | sort | tail -n 1)
-if [ -f "$WHEEL" ]; then
-    info "Installation du wheel $WHEEL"
-    pip install --upgrade "$WHEEL"
-    success "ONNX Runtime compilé et installé dans $VENV_DIR"
+# ==================== Installation Python ====================
+info "Installation du wheel Python..."
+CPU_WHEEL=$(find "$BUILD_DIR/cpu" -name "onnxruntime-*.whl" | sort | tail -n 1)
+GPU_WHEEL=$(find "$BUILD_DIR/gpu" -name "onnxruntime-*.whl" | sort | tail -n 1)
+if [ -f "$GPU_WHEEL" ]; then
+    pip install --upgrade "$GPU_WHEEL"
+elif [ -f "$CPU_WHEEL" ]; then
+    pip install --upgrade "$CPU_WHEEL"
 else
-    error "Wheel introuvable après compilation"
+    error "Wheel introuvable, compilation échouée."
     exit 1
 fi
 
 deactivate
-success "Venv + ONNX Runtime prêt à l'emploi"
+success "Compilation terminée. Venv désactivé."
