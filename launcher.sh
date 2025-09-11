@@ -4,65 +4,87 @@ set -euo pipefail
 clear
 
 # ==================== Couleurs ====================
-BLUE='\033[1;34m'
 GREEN='\033[1;32m'
-RED='\033[1;31m'
-NC='\033[0m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
-success() { echo -e "${GREEN}[OK]${NC} $*"; }
-error()   { echo -e "${RED}[ERROR]${NC} $*"; }
+# ==================== Scripts ====================
+SCRIPT1="omv-config-base.sh"
+SCRIPT2="docker-ollama-base.sh"
 
-# ==================== Détection GPU ====================
-GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
-info "GPU détecté : $GPU_VENDOR"
+# ==================== Checklist dynamique ====================
+declare -A CHECKLIST
+mark_done() { CHECKLIST["$1"]="✅"; }
+mark_fail() { CHECKLIST["$1"]="❌"; }
 
-# ==================== Dépendances ====================
-info "Installation dépendances build"
-sudo apt update -qq
-sudo apt install -y -qq \
-    git python3 python3-pip python3-venv python3-setuptools python3-wheel \
-    build-essential cmake protobuf-compiler libprotobuf-dev \
-    python3-dev ninja-build ccache
+show_checklist() {
+    echo -e "\n${CYAN}==================== Checklist ====================${NC}"
+    for task in "${!CHECKLIST[@]}"; do
+        echo -e "${CHECKLIST[$task]} $task"
+    done
+    echo -e "${CYAN}==================================================${NC}\n"
+}
 
-pip install --upgrade pip
-pip install --upgrade numpy sympy packaging wheel setuptools
-pip install --upgrade protobuf
+# ==================== Vérification exécutable ====================
+check_exec() {
+    local script=$1
+    if [ ! -x "$script" ]; then
+        echo -e "${YELLOW}Rendre $script exécutable...${NC}"
+        chmod +x "$script"
+    fi
+}
 
-# ==================== Source code ====================
-WORKDIR="$HOME/onnxruntime_build"
-mkdir -p "$WORKDIR"
-cd "$WORKDIR"
+# ==================== Exécution d'un script ====================
+run_script() {
+    local script=$1
+    echo -e "${CYAN}=== Exécution de $script ===${NC}"
+    check_exec "$script"
+    if ./"$script"; then
+        mark_done "$script"
+        echo -e "${GREEN}$script terminé ✅${NC}\n"
+    else
+        mark_fail "$script"
+        echo -e "${RED}$script échoué ❌${NC}\n"
+    fi
+}
 
-if [ ! -d "onnxruntime" ]; then
-    info "Clonage dépôt ONNX Runtime"
-    git clone --recursive https://github.com/microsoft/onnxruntime
-fi
+# ==================== Fonctions parties ====================
+partie1() { run_script "$SCRIPT1"; }
+partie2() { run_script "$SCRIPT2"; }
+partie1_2() { partie1; partie2; }
 
-cd onnxruntime
-git submodule update --init --recursive
-git clean -xfd || true
-git reset --hard HEAD
+# ==================== Menu ====================
+echo -e "${YELLOW}#############################################${NC}"
+echo -e "${YELLOW}# Choisir une option (défaut Partie 1 dans 10s) #${NC}"
+echo -e "${YELLOW}#############################################${NC}"
+echo "1) Partie 1  -> $SCRIPT1"
+echo "2) Partie 2  -> $SCRIPT2"
+echo "3) Partie 1+2 -> $SCRIPT1 + $SCRIPT2"
+echo -e "${YELLOW}#############################################${NC}"
 
-# ==================== Compilation ====================
-if echo "$GPU_VENDOR" | grep -qi "amd"; then
-    info "Build avec ROCm"
-    ./build.sh --config Release --build_wheel --update --build --parallel --use_rocm
-elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
-    info "Build avec CUDA"
-    ./build.sh --config Release --build_wheel --update --build --parallel --use_cuda
-else
-    info "Build en mode CPU"
-    ./build.sh --config Release --build_wheel --update --build --parallel
-fi
+# Timer 10s pour choix par défaut
+CHOIX=""
+for i in {10..1}; do
+    printf "\rSélection automatique dans %2d secondes..." "$i"
+    read -t 1 -n 1 input || true
+    if [[ -n "$input" ]]; then
+        CHOIX=$input
+        break
+    fi
+done
+printf "\n"
+CHOIX=${CHOIX:-1}
 
-# ==================== Installation ====================
-WHEEL=$(find build -name "onnxruntime-*.whl" | sort | tail -n 1)
+# ==================== Execution selon choix ====================
+case $CHOIX in
+    1) partie1 ;;
+    2) partie2 ;;
+    3) partie1_2 ;;
+    *) echo -e "${RED}Option invalide, exécution Partie 1 par défaut${NC}"; partie1 ;;
+esac
 
-if [ -f "$WHEEL" ]; then
-    pip install --upgrade "$WHEEL"
-    success "ONNX Runtime compilé et installé depuis $WHEEL"
-else
-    error "Wheel introuvable. Compilation échouée."
-    exit 1
-fi
+# ==================== Affichage checklist finale ====================
+show_checklist
+echo -e "${CYAN}Tous les scripts terminés! 👋${NC}"
