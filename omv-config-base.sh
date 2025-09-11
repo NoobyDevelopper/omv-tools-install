@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
+
 clear
+
 # ==================== Couleurs ====================
 BLUE='\033[1;34m'
 LIGHT_BLUE='\033[1;36m'
@@ -189,9 +191,13 @@ success "KVM installé"
 finish_task "OMV-KVM" done
 
 # --- OMV-Compose + Docker ---
-sudo apt install -y -qq openmediavault-compose docker-compose-plugin
-success "OMV-Compose + Docker Compose installés"
-finish_task "OMV-Compose + Docker" done
+info "Installation OMV-Compose (inclut Docker)"
+if sudo apt install -y -qq openmediavault-compose; then
+    success "OMV-Compose installé (Docker inclus)"
+    finish_task "OMV-Compose + Docker" done
+else
+    finish_task "OMV-Compose + Docker" fail
+fi
 
 # --- Nettoyage ---
 sudo apt autoremove -y -qq
