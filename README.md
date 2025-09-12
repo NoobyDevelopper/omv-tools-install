@@ -14,11 +14,11 @@ pas dev fait par chatgpt je decline toute responsabilite
 
 la sauvegarde est une vertue qui faut grandement aimé.
 
-        OMV Config Base - Script
+OMV Config Base - Script
         
-        Automatisation complète de la configuration de base pour OpenMediaVault avec support GPU et Python.
+Automatisation complète de la configuration de base pour OpenMediaVault avec support GPU et Python.
         
-        Fonctionnalités clés :
+Fonctionnalités clés :
         
         Mise à jour du système (apt update/upgrade)
         
