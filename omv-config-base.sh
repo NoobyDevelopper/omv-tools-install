@@ -75,6 +75,9 @@ STEPS=(
     "Venv"
 )
 
+TMP_DIR="/tmp/omv_temp"
+mkdir -p "$TMP_DIR"
+
 # --- Mise à jour système ---
 info "Mise à jour du système"
 if sudo apt update -qq && sudo apt upgrade -y -qq; then
@@ -114,7 +117,8 @@ fi
 
 # --- OMV-Extras ---
 info "Installation d'OMV-Extras"
-if wget -qO /tmp/omv-extras-install.sh https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/install && bash /tmp/omv-extras-install.sh >/dev/null 2>&1; then
+OMV_EXTRAS="$TMP_DIR/omv-extras-install.sh"
+if wget -qO "$OMV_EXTRAS" https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/install && bash "$OMV_EXTRAS" >/dev/null 2>&1; then
     success "OMV-Extras installé"
     finish_task "OMV-Extras" done
 else
@@ -144,10 +148,10 @@ GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
 
 if echo "$GPU_VENDOR" | grep -qi "amd"; then
     info "GPU AMD détecté"
-    DEB_FILE="amdgpu-install_6.4.60403-1_all.deb"
-    DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/$DEB_FILE"
+    DEB_FILE="$TMP_DIR/amdgpu-install_6.4.60403-1_all.deb"
+    DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/amdgpu-install_6.4.60403-1_all.deb"
     wget -q "$DEB_URL" -O "$DEB_FILE"
-    sudo apt install -y ./"$DEB_FILE"
+    sudo apt install -y "$DEB_FILE"
     sudo apt update -qq
     sudo apt install -y python3-setuptools python3-wheel
     sudo usermod -a -G render,video "$LOGNAME"
@@ -191,9 +195,12 @@ else
     finish_task "OMV-Compose + Docker" fail
 fi
 
-# --- Nettoyage ---
-sudo apt autoremove -y -qq
-success "Nettoyage effectué"
+# --- Nettoyage automatique ---
+info "Nettoyage des fichiers temporaires et caches"
+rm -rf "$TMP_DIR"
+sudo apt clean
+sudo apt autoremove -y
+success "Nettoyage terminé"
 finish_task "Nettoyage" done
 
 # --- Venv ---
