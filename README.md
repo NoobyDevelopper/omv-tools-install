@@ -50,7 +50,7 @@ la sauvegarde est une vertue qui faut grandement aimé.
         
         Checklist finale : ✔ toutes les étapes sont terminées et prêtes à l’usage.
 
-        ONNX Runtime Builder ✅
+ONNX Runtime Builder ✅
 
 Script automatisé pour compiler ONNX Runtime CPU & ROCm GPU, gérer les venv Python, filtrer les warnings et installer les wheels.
 
