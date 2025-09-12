@@ -49,3 +49,31 @@ la sauvegarde est une vertue qui faut grandement aimé.
         Création d’un venv Python avec onnxruntime, onnx et numpy
         
         Checklist finale : ✔ toutes les étapes sont terminées et prêtes à l’usage.
+
+        ONNX Runtime Builder ✅
+
+Script automatisé pour compiler ONNX Runtime CPU & ROCm GPU, gérer les venv Python, filtrer les warnings et installer les wheels.
+
+🚀 Checklist des fonctionnalités
+
+         Compilation CPU et ROCm GPU en parallèle
+        
+         Virtual environments Python distincts pour CPU et GPU
+        
+         Flags de compilation appliqués : -Wno-unused-parameter et -Wunused-variable
+        
+         Suppression des warnings des sous-modules ONNX
+        
+         Gestion propre de Ctrl+C pour interrompre les builds
+        
+         Installation automatique des wheels ONNX Runtime
+
+🛠️ Prérequis
+
+         Python 3.8+
+        
+         Pip, virtualenv, Ninja
+        
+         ROCm drivers et runtime pour GPU
+        
+         (Optionnel) Docker pour environnement isolé
