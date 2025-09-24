@@ -18,9 +18,7 @@ warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR] $*${NC}"; }
 
 show_progress() {
-    local done=$1
-    local total=$2
-    local width=40
+    local done=$1 total=$2 width=40
     local percent=$(( done * 100 / total ))
     local filled=$(( percent * width / 100 ))
     local empty=$(( width - filled ))
@@ -48,12 +46,13 @@ GPU_VENV="$HOME/onnx_gpu_env"
 WORKDIR="$HOME/onnxruntime_build"
 REPO="$WORKDIR/onnxruntime"
 NPROC=$(nproc)
-
 TASKS_TOTAL=12
 TASKS_DONE_COUNT=0
+NINJA_CACHE_DIR="$WORKDIR/ninja_cache"
+CMAKE_CACHE_DIR="$WORKDIR/cmake_cache"
+
 finish_task() {
-    local task="$1"
-    local status="$2"
+    local task="$1" status="$2"
     case "$status" in
         done) mark_done "$task" ;;
         warn) mark_warn "$task" ;;
@@ -63,19 +62,16 @@ finish_task() {
     show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
 }
 
-# ==================== Pré-requis système ====================
+# ==================== Fonctions ====================
 install_prereqs() {
     info "Installation des dépendances système..."
     sudo apt update -qq
-    sudo apt install -y -qq \
-        build-essential git wget python3-venv python3-pip python3-setuptools python3-wheel \
-        cmake ninja-build pkg-config libssl-dev libprotobuf-dev protobuf-compiler \
-        libopenblas-dev curl
+    sudo apt install -y -qq build-essential git wget python3-venv python3-pip python3-setuptools python3-wheel \
+        cmake ninja-build pkg-config libssl-dev libprotobuf-dev protobuf-compiler libopenblas-dev curl
     success "Dépendances système installées"
     finish_task "Prérequis système" done
 }
 
-# ==================== Venv ====================
 prepare_venv() {
     local VENV_DIR=$1
     info "Préparation du venv : $VENV_DIR"
@@ -87,7 +83,6 @@ prepare_venv() {
     finish_task "Venv $(basename $VENV_DIR)" done
 }
 
-# ==================== Repo ONNX Runtime ====================
 clone_or_update_repo() {
     mkdir -p "$WORKDIR"
     cd "$WORKDIR"
@@ -117,41 +112,32 @@ append_cxx_flags() {
     echo "$FLAGS"
 }
 
-# ==================== Build ONNX Runtime ====================
 build_onnxruntime() {
-    local VENV_DIR=$1
-    local BUILD_DIR=$2
-    local USE_ROCM=${3:-0}
+    local VENV_DIR=$1 BUILD_DIR=$2 USE_ROCM=${3:-0}
+    [ "$USE_ROCM" -eq 1 ] && info "Compilation GPU ROCm..." || info "Compilation CPU..."
 
-    if [ "$USE_ROCM" -eq 1 ]; then
-        info "Compilation GPU ROCm..."
-    else
-        info "Compilation CPU..."
-    fi
+    mkdir -p "$BUILD_DIR"
+    mkdir -p "$CMAKE_CACHE_DIR"
+
+    export NINJA_STATUS="[%f/%t %p]"
+    export NINJA_DIRECTORY_CACHE="$NINJA_CACHE_DIR"
 
     source "$VENV_DIR/bin/activate"
-    ./build.sh \
-        --allow_running_as_root \
-        --build_dir "$BUILD_DIR" \
-        --config Release \
-        --build_wheel \
-        --update \
-        --build \
-        --parallel "$NPROC" \
-        --skip_tests \
+    ./build.sh --allow_running_as_root --build_dir "$BUILD_DIR" --config Release \
+        --build_wheel --update --build --parallel "$NPROC" --skip_tests \
         $( [ "$USE_ROCM" -eq 1 ] && echo "--use_rocm" ) \
         --cmake_generator Ninja \
         --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" \
-                             ONNXRUNTIME_DISABLE_WARNINGS=ON \
-                             ONNX_DISABLE_WARNINGS=ON
+                             ONNXRUNTIME_DISABLE_WARNINGS=ON ONNX_DISABLE_WARNINGS=ON \
+        --cmake_extra_defines "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" \
+        --cmake_extra_defines "-DCMAKE_CACHEFILE_DIR=$CMAKE_CACHE_DIR"
     deactivate
     success "Compilation $(basename $BUILD_DIR) terminée"
     finish_task "Build $(basename $BUILD_DIR)" done
 }
 
 install_wheel() {
-    local VENV_DIR=$1
-    local BUILD_DIR=$2
+    local VENV_DIR=$1 BUILD_DIR=$2
     local WHEEL
     WHEEL=$(find "$BUILD_DIR" -name "onnxruntime-*.whl" | sort | tail -n 1 || true)
     if [ -f "$WHEEL" ]; then
@@ -166,6 +152,11 @@ install_wheel() {
     fi
 }
 
+detect_amd_gpu() {
+    GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -i "amd" || true)
+    [ -n "$GPU_VENDOR" ]
+}
+
 # ==================== Exécution ====================
 install_prereqs
 prepare_venv "$CPU_VENV"
@@ -174,23 +165,31 @@ clone_or_update_repo
 
 cd "$REPO"
 rm -rf build_cpu build_gpu
+mkdir -p "$NINJA_CACHE_DIR" "$CMAKE_CACHE_DIR"
 
+# Build CPU
 build_onnxruntime "$CPU_VENV" "build_cpu" &
 PID_CPU=$!
-build_onnxruntime "$GPU_VENV" "build_gpu" 1 &
-PID_GPU=$!
 
-trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU $PID_GPU 2>/dev/null; exit 1' SIGINT
+# Build GPU uniquement si GPU AMD détecté
+if detect_amd_gpu; then
+    build_onnxruntime "$GPU_VENV" "build_gpu" 1 &
+    PID_GPU=$!
+else
+    PID_GPU=
+fi
+
+trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU ${PID_GPU:-} 2>/dev/null; exit 1' SIGINT
 
 wait $PID_CPU
-wait $PID_GPU
+[ -n "${PID_GPU:-}" ] && wait $PID_GPU
 
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-install_wheel "$GPU_VENV" "$REPO/build_gpu"
+[ -d "$REPO/build_gpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
 
 # ==================== Checklist finale ====================
 echo -e "\n# ==================== Checklist ===================="
 [ -f "$CPU_VENV/bin/python3" ] && success "ONNX Runtime CPU disponible"
-[ -f "$GPU_VENV/bin/python3" ] && success "ONNX Runtime GPU (ROCm) disponible"
+[ -f "$GPU_VENV/bin/python3" ] && [ -d "$REPO/build_gpu" ] && success "ONNX Runtime GPU (ROCm) disponible"
 show_checklist
 success "Configuration ONNX Runtime terminée !"
