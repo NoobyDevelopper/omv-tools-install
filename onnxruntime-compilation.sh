@@ -5,33 +5,30 @@ clear
 
 # ==================== Couleurs ====================
 BLUE='\033[1;34m'
-LIGHT_BLUE='\033[1;36m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
 RED='\033[1;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-info()    { echo -e "${BLUE}[INFO]${NC} ${LIGHT_BLUE}$*${NC}"; }
+info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error()   { echo -e "${RED}[ERROR] $*${NC}"; }
+error()   { echo -e "${RED}[ERROR] $*"; }
 
-show_progress() {
-    local done=$1 total=$2 width=40
-    local percent=$(( done * 100 / total ))
-    local filled=$(( percent * width / 100 ))
-    local empty=$(( width - filled ))
-    printf "\r${BLUE}[PROGRESS]${NC} ${BLUE}|"
-    printf '%0.s█' $(seq 1 $filled)
-    printf '%0.s ' $(seq 1 $empty)
-    printf "| %3d%% (%d/%d)${NC}" $percent $done $total
-}
+# ==================== Variables ====================
+CPU_VENV="$HOME/onnx_cpu_env"
+GPU_VENV="$HOME/onnx_gpu_env"
+WORKDIR="$HOME/onnxruntime_build"
+REPO="$WORKDIR/onnxruntime"
+NPROC=$(nproc)
 
+# ==================== Checklist ====================
 declare -A CHECKLIST
 mark_done() { CHECKLIST["$1"]="✅"; }
 mark_warn() { CHECKLIST["$1"]="⚠️"; }
 mark_fail() { CHECKLIST["$1"]="❌"; }
+
 show_checklist() {
     echo -e "\n${CYAN}==================== Checklist ====================${NC}"
     for task in "${!CHECKLIST[@]}"; do
@@ -40,47 +37,16 @@ show_checklist() {
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
-# ==================== Variables ====================
-CPU_VENV="$HOME/onnx_cpu_env"
-GPU_VENV="$HOME/onnx_gpu_env"
-WORKDIR="$HOME/onnxruntime_build"
-REPO="$WORKDIR/onnxruntime"
-NPROC=$(nproc)
-TASKS_TOTAL=12
-TASKS_DONE_COUNT=0
-NINJA_CACHE_DIR="$WORKDIR/ninja_cache"
-CMAKE_CACHE_DIR="$WORKDIR/cmake_cache"
-
-finish_task() {
-    local task="$1" status="$2"
-    case "$status" in
-        done) mark_done "$task" ;;
-        warn) mark_warn "$task" ;;
-        fail) mark_fail "$task" ;;
-    esac
-    TASKS_DONE_COUNT=$((TASKS_DONE_COUNT+1))
-    show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
-}
-
 # ==================== Fonctions ====================
-install_prereqs() {
-    info "Installation des dépendances système..."
-    sudo apt update -qq
-    sudo apt install -y -qq build-essential git wget python3-venv python3-pip python3-setuptools python3-wheel \
-        cmake ninja-build pkg-config libssl-dev libprotobuf-dev protobuf-compiler libopenblas-dev curl
-    success "Dépendances système installées"
-    finish_task "Prérequis système" done
-}
-
 prepare_venv() {
     local VENV_DIR=$1
     info "Préparation du venv : $VENV_DIR"
     [ -d "$VENV_DIR" ] || python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
-    pip install --upgrade pip setuptools wheel packaging ninja cmake flatbuffers numpy
+    pip install --upgrade pip setuptools wheel packaging ninja flatbuffers numpy cmake
     deactivate
     success "Venv prêt : $VENV_DIR"
-    finish_task "Venv $(basename $VENV_DIR)" done
+    mark_done "Venv $(basename $VENV_DIR)"
 }
 
 clone_or_update_repo() {
@@ -88,56 +54,47 @@ clone_or_update_repo() {
     cd "$WORKDIR"
     if [ ! -d "$REPO" ]; then
         info "Clonage du dépôt ONNX Runtime..."
-        git clone --recursive https://github.com/microsoft/onnxruntime || { finish_task "Git Repo" fail; return; }
+        git clone --recursive https://github.com/microsoft/onnxruntime
         success "Dépôt cloné"
-        finish_task "Git Repo" done
+        mark_done "Git Repo"
     else
         info "Mise à jour du dépôt existant..."
         cd "$REPO"
-        [ -f .git/config.lock ] && rm -f .git/config.lock
-        git submodule deinit -f . || true
-        git submodule sync --recursive || true
-        git submodule update --init --recursive || true
         git fetch origin
-        git checkout main || git checkout master || true
-        git pull --ff-only || true
+        git reset --hard origin/main
+        git submodule update --init --recursive || true
         success "Dépôt mis à jour"
-        finish_task "Git Repo" done
+        mark_done "Git Repo"
     fi
 }
 
-append_cxx_flags() {
-    local FLAGS="-Wno-unused-parameter -Wunused-variable"
-    [ -n "${CMAKE_CXX_FLAGS-}" ] && FLAGS="$CMAKE_CXX_FLAGS $FLAGS"
-    echo "$FLAGS"
-}
-
 build_onnxruntime() {
-    local VENV_DIR=$1 BUILD_DIR=$2 USE_ROCM=${3:-0}
-    [ "$USE_ROCM" -eq 1 ] && info "Compilation GPU ROCm..." || info "Compilation CPU..."
-
-    mkdir -p "$BUILD_DIR"
-    mkdir -p "$CMAKE_CACHE_DIR"
-
-    export NINJA_STATUS="[%f/%t %p]"
-    export NINJA_DIRECTORY_CACHE="$NINJA_CACHE_DIR"
+    local VENV_DIR=$1
+    local BUILD_DIR=$2
+    local USE_ROCM=${3:-0}
 
     source "$VENV_DIR/bin/activate"
-    ./build.sh --allow_running_as_root --build_dir "$BUILD_DIR" --config Release \
-        --build_wheel --update --build --parallel "$NPROC" --skip_tests \
-        $( [ "$USE_ROCM" -eq 1 ] && echo "--use_rocm" ) \
-        --cmake_generator Ninja \
-        --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" \
-                             ONNXRUNTIME_DISABLE_WARNINGS=ON ONNX_DISABLE_WARNINGS=ON \
-        --cmake_extra_defines "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" \
-        --cmake_extra_defines "-DCMAKE_CACHEFILE_DIR=$CMAKE_CACHE_DIR"
-    deactivate
+    mkdir -p "$BUILD_DIR"
+    cd "$BUILD_DIR"
+
+    CMAKE_FLAGS="-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+-DONNXRUNTIME_DISABLE_WARNINGS=ON \
+-DONNX_DISABLE_WARNINGS=ON \
+-DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable'"
+
+    info "Génération CMake pour $(basename $BUILD_DIR)..."
+    cmake "$REPO" -G Ninja $CMAKE_FLAGS $( [ "$USE_ROCM" -eq 1 ] && echo "-Donnxruntime_USE_ROCM=ON" )
+
+    info "Compilation $(basename $BUILD_DIR)..."
+    ninja -j"$NPROC"
     success "Compilation $(basename $BUILD_DIR) terminée"
-    finish_task "Build $(basename $BUILD_DIR)" done
+    mark_done "Build $(basename $BUILD_DIR)"
+    deactivate
 }
 
 install_wheel() {
-    local VENV_DIR=$1 BUILD_DIR=$2
+    local VENV_DIR=$1
+    local BUILD_DIR=$2
     local WHEEL
     WHEEL=$(find "$BUILD_DIR" -name "onnxruntime-*.whl" | sort | tail -n 1 || true)
     if [ -f "$WHEEL" ]; then
@@ -145,51 +102,28 @@ install_wheel() {
         pip install --upgrade "$WHEEL"
         deactivate
         success "Wheel installé dans $VENV_DIR"
-        finish_task "Wheel $(basename $BUILD_DIR)" done
+        mark_done "Wheel $(basename $BUILD_DIR)"
     else
         error "Wheel non trouvé dans $BUILD_DIR"
-        finish_task "Wheel $(basename $BUILD_DIR)" fail
+        mark_fail "Wheel $(basename $BUILD_DIR)"
     fi
 }
 
-detect_amd_gpu() {
-    GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -i "amd" || true)
-    [ -n "$GPU_VENDOR" ]
-}
-
 # ==================== Exécution ====================
-install_prereqs
 prepare_venv "$CPU_VENV"
 prepare_venv "$GPU_VENV"
 clone_or_update_repo
 
-cd "$REPO"
-rm -rf build_cpu build_gpu
-mkdir -p "$NINJA_CACHE_DIR" "$CMAKE_CACHE_DIR"
+rm -rf "$REPO/build_cpu" "$REPO/build_gpu"
 
-# Build CPU
-build_onnxruntime "$CPU_VENV" "build_cpu" &
-PID_CPU=$!
-
-# Build GPU uniquement si GPU AMD détecté
-if detect_amd_gpu; then
-    build_onnxruntime "$GPU_VENV" "build_gpu" 1 &
-    PID_GPU=$!
-else
-    PID_GPU=
-fi
-
-trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU ${PID_GPU:-} 2>/dev/null; exit 1' SIGINT
-
-wait $PID_CPU
-[ -n "${PID_GPU:-}" ] && wait $PID_GPU
+build_onnxruntime "$CPU_VENV" "$REPO/build_cpu"
+build_onnxruntime "$GPU_VENV" "$REPO/build_gpu" 1
 
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-[ -d "$REPO/build_gpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
+install_wheel "$GPU_VENV" "$REPO/build_gpu"
 
 # ==================== Checklist finale ====================
-echo -e "\n# ==================== Checklist ===================="
 [ -f "$CPU_VENV/bin/python3" ] && success "ONNX Runtime CPU disponible"
-[ -f "$GPU_VENV/bin/python3" ] && [ -d "$REPO/build_gpu" ] && success "ONNX Runtime GPU (ROCm) disponible"
+[ -f "$GPU_VENV/bin/python3" ] && success "ONNX Runtime GPU (ROCm) disponible"
 show_checklist
 success "Configuration ONNX Runtime terminée !"
