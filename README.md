@@ -56,24 +56,13 @@ Script automatisé pour compiler ONNX Runtime CPU & ROCm GPU, gérer les venv Py
 
 🚀 Checklist des fonctionnalités
 
-         Compilation CPU et ROCm GPU en parallèle
-        
-         Virtual environments Python distincts pour CPU et GPU
-        
-         Flags de compilation appliqués : -Wno-unused-parameter et -Wunused-variable
-        
-         Suppression des warnings des sous-modules ONNX
-        
-         Gestion propre de Ctrl+C pour interrompre les builds
-        
-         Installation automatique des wheels ONNX Runtime
-
-🛠️ Prérequis
-
-         Python 3.8+
-        
-         Pip, virtualenv, Ninja
-        
-         ROCm drivers et runtime pour GPU
-        
-         (Optionnel) Docker pour environnement isolé
+         ```mermaid
+        flowchart TD
+            A[Pré-requis système<br>Git, CMake, Ninja, Python3-dev, build-essential] --> B[Création des venv<br>CPU et GPU, pip, setuptools, wheel...]
+            B --> C{Wheels existantes dans backup ?}
+            C -- Oui --> D[Installation des wheels depuis backup<br>Sortie du script]
+            C -- Non --> E[Clone / Update du repo ONNX Runtime<br>git clone --recursive ou git pull]
+            E --> F[Détection GPU<br>AMD → ROCm, NVIDIA → CUDA, Sinon CPU]
+            F --> G[Compilation ONNX Runtime<br>CPU build puis GPU build si présent]
+            G --> H[Installation des wheels dans les venv<br>CPU et GPU]
+            H --> I[Backup et nettoyage<br>Copie des wheels vers ~/onnxruntime_wheels_backup<br>Suppression des dossiers build_cpu / build_gpu]
