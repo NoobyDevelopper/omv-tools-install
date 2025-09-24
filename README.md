@@ -56,13 +56,44 @@ Script automatisé pour compiler ONNX Runtime CPU & ROCm GPU, gérer les venv Py
 
 🚀 Checklist des fonctionnalités
 
-         ```mermaid
-        flowchart TD
-            A[Pré-requis système<br>Git, CMake, Ninja, Python3-dev, build-essential] --> B[Création des venv<br>CPU et GPU, pip, setuptools, wheel...]
-            B --> C{Wheels existantes dans backup ?}
-            C -- Oui --> D[Installation des wheels depuis backup<br>Sortie du script]
-            C -- Non --> E[Clone / Update du repo ONNX Runtime<br>git clone --recursive ou git pull]
-            E --> F[Détection GPU<br>AMD → ROCm, NVIDIA → CUDA, Sinon CPU]
-            F --> G[Compilation ONNX Runtime<br>CPU build puis GPU build si présent]
-            G --> H[Installation des wheels dans les venv<br>CPU et GPU]
-            H --> I[Backup et nettoyage<br>Copie des wheels vers ~/onnxruntime_wheels_backup<br>Suppression des dossiers build_cpu / build_gpu]
+# Checklist du script ONNX Runtime
+
+- [ ] **Pré-requis système**  
+  - Git, CMake, Ninja  
+  - Python3-dev, build-essential, wget, curl
+
+- [ ] **Création des venv**  
+  - CPU venv (`$HOME/onnx_cpu_env`)  
+  - GPU venv (`$HOME/onnx_gpu_env`)  
+  - pip, setuptools, wheel, packaging, ninja, cmake, flatbuffers, numpy
+
+- [ ] **Installation depuis backup**  
+  - Si des wheels existent dans `~/onnxruntime_wheels_backup`  
+    - Installer directement dans le CPU venv  
+    - Sortie du script  
+
+- [ ] **Clone / Update du repo ONNX Runtime**  
+  - `git clone --recursive` si inexistant  
+  - Sinon `git pull` + submodules update  
+
+- [ ] **Détection GPU**  
+  - AMD → ROCm  
+  - NVIDIA → CUDA  
+  - Aucun → CPU uniquement  
+
+- [ ] **Compilation ONNX Runtime**  
+  - Build CPU  
+  - Build GPU si GPU détecté  
+  - Logs et barre de progression  
+
+- [ ] **Installation des wheels**  
+  - CPU venv  
+  - GPU venv (si présent)  
+
+- [ ] **Backup et nettoyage**  
+  - Copie des wheels vers `~/onnxruntime_wheels_backup`  
+  - Suppression des dossiers `build_cpu` et `build_gpu`  
+
+- [ ] ✅ **ONNX Runtime prêt**  
+  - CPU et GPU installés dans les venv  
+  - Wheels sauvegardées
