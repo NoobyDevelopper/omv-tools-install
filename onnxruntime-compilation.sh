@@ -133,6 +133,12 @@ build_onnxruntime_progress(){
     local BACKEND=$3
     local LOG_FILE="$TMP_DIR/${BUILD_DIR}.log"
 
+    WHEEL=$(find "$BUILD_DIR/Release/dist" -name "onnxruntime-*.whl" | sort | tail -n 1)
+    if [ -f "$WHEEL" ]; then
+        info "Wheel déjà présente pour $BACKEND, compilation ignorée."
+        return
+    fi
+
     mkdir -p "$BUILD_DIR"
     source "$VENV_DIR/bin/activate"
     info "Compilation $(basename $BUILD_DIR) [$BACKEND]..."
@@ -196,7 +202,6 @@ prepare_venv "$GPU_VENV"
 clone_or_update_repo
 
 cd "$REPO"
-rm -rf build_cpu build_gpu
 
 GPU_BACKEND=$(detect_gpu)
 
