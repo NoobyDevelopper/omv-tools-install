@@ -46,20 +46,6 @@ show_checklist() {
 }
 
 # ==================== Étapes ====================
-TASKS_TOTAL=13
-TASKS_DONE_COUNT=0
-finish_task() {
-    local task="$1"
-    local status="$2"
-    case "$status" in
-        done) mark_done "$task" ;;
-        warn) mark_warn "$task" ;;
-        fail) mark_fail "$task" ;;
-    esac
-    TASKS_DONE_COUNT=$((TASKS_DONE_COUNT+1))
-    show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
-}
-
 STEPS=(
     "Mise à jour système"
     "Firmware AMD"
@@ -74,7 +60,22 @@ STEPS=(
     "OMV-Compose + Docker"
     "Nettoyage"
     "Venv"
+    "Wake-on-LAN"
 )
+
+TASKS_TOTAL=${#STEPS[@]}
+TASKS_DONE_COUNT=0
+finish_task() {
+    local task="$1"
+    local status="$2"
+    case "$status" in
+        done) mark_done "$task" ;;
+        warn) mark_warn "$task" ;;
+        fail) mark_fail "$task" ;;
+    esac
+    TASKS_DONE_COUNT=$((TASKS_DONE_COUNT+1))
+    show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
+}
 
 TMP_DIR="/tmp/omv_temp"
 mkdir -p "$TMP_DIR"
@@ -226,6 +227,30 @@ pip install --upgrade pip setuptools wheel numpy
 deactivate
 success "Venv global prêt"
 finish_task "Venv" done
+
+# --- Wake-on-LAN automatique ---
+info "Activation du Wake-on-LAN sur l'interface réseau principale"
+MAIN_IFACE=$(ip route | awk '/default/ {print $5; exit}')
+if [ -n "$MAIN_IFACE" ]; then
+    info "Interface détectée : $MAIN_IFACE"
+    if command -v ethtool &>/dev/null; then
+        WOL_STATUS=$(ethtool "$MAIN_IFACE" | awk '/Wake-on/ {print $2}')
+        if [ "$WOL_STATUS" != "g" ]; then
+            sudo ethtool -s "$MAIN_IFACE" wol g
+            success "WOL activé sur $MAIN_IFACE"
+            finish_task "Wake-on-LAN" done
+        else
+            success "WOL déjà activé sur $MAIN_IFACE"
+            finish_task "Wake-on-LAN" done
+        fi
+    else
+        warn "ethtool non trouvé, impossible d'activer WOL"
+        finish_task "Wake-on-LAN" warn
+    fi
+else
+    warn "Impossible de détecter l'interface principale"
+    finish_task "Wake-on-LAN" fail
+fi
 
 # ==================== Checklist finale ====================
 show_checklist
