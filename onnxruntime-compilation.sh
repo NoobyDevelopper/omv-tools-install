@@ -132,9 +132,10 @@ build_onnxruntime_progress(){
     local BUILD_DIR=$2
     local BACKEND=$3
     local LOG_FILE="$TMP_DIR/${BUILD_DIR}.log"
+    local WHEEL_DIR="$BUILD_DIR/Release/dist"
 
-    WHEEL=$(find "$BUILD_DIR/Release/dist" -name "onnxruntime-*.whl" | sort | tail -n 1)
-    if [ -f "$WHEEL" ]; then
+    # Si la wheel existe déjà, on saute le build
+    if [ -d "$WHEEL_DIR" ] && find "$WHEEL_DIR" -name "onnxruntime-*.whl" | grep -q .; then
         info "Wheel déjà présente pour $BACKEND, compilation ignorée."
         return
     fi
@@ -176,20 +177,23 @@ show_build_progress_sequential(){
 install_wheel(){
     local VENV_DIR=$1
     local BUILD_DIR=$2
+    local WHEEL_DIR="$BUILD_DIR/Release/dist"
     source "$VENV_DIR/bin/activate"
 
-    WHEEL=$(find "$BUILD_DIR/Release/dist" -name "onnxruntime-*.whl" | sort | tail -n 1)
-    if [ -f "$WHEEL" ]; then
-        info "Installation de la wheel : $WHEEL"
-        pip install --upgrade "$WHEEL"
-        echo -n "➡️  Version installée : "
-        python -c "import onnxruntime as ort; print(ort.__version__, ort.get_available_providers())"
-        success "ONNX Runtime installé dans $VENV_DIR"
-    else
-        warn "Wheel non trouvée dans $BUILD_DIR/Release/dist/"
+    if [ -d "$WHEEL_DIR" ]; then
+        WHEEL=$(find "$WHEEL_DIR" -name "onnxruntime-*.whl" | sort | tail -n 1)
+        if [ -f "$WHEEL" ]; then
+            info "Installation de la wheel : $WHEEL"
+            pip install --upgrade "$WHEEL"
+            echo -n "➡️  Version installée : "
+            python -c "import onnxruntime as ort; print(ort.__version__, ort.get_available_providers())"
+            success "ONNX Runtime installé dans $VENV_DIR"
+            finish_task "Wheel $(basename $BUILD_DIR)" done
+            return
+        fi
     fi
-    deactivate
-    finish_task "Wheel $(basename $BUILD_DIR)" done
+    warn "Wheel non trouvée dans $WHEEL_DIR"
+    finish_task "Wheel $(basename $BUILD_DIR)" warn
 }
 
 # ==================== Exécution ====================
