@@ -31,7 +31,7 @@ show_checklist(){
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
-TASKS_TOTAL=10
+TASKS_TOTAL=13
 TASKS_DONE_COUNT=0
 finish_task(){
     local task="$1"; local status="$2"
@@ -52,6 +52,20 @@ show_progress(){
 }
 
 # ==================== Fonctions ====================
+install_system_prereqs(){
+    info "Installation des prérequis système..."
+    if command -v apt &>/dev/null; then
+        sudo apt update
+        sudo apt install -y git cmake ninja-build python3-dev build-essential wget curl lsb-release
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -Sy --noconfirm git cmake ninja python python-pip base-devel wget curl
+    else
+        warn "Gestionnaire de paquets non reconnu, installer manuellement git, cmake, ninja, python-dev..."
+    fi
+    success "Pré-requis système installés"
+    finish_task "System Prereqs" done
+}
+
 install_pip_if_missing(){
     if ! command -v pip3 &>/dev/null; then
         info "Installation de pip..."
@@ -137,24 +151,9 @@ build_onnxruntime(){
     finish_task "Build $(basename $BUILD_DIR)" done
 }
 
-install_wheel(){
-    local VENV_DIR=$1
-    local BUILD_DIR=$2
-    WHEEL=$(find "$BUILD_DIR" -name "onnxruntime-*.whl" | sort | tail -n 1 || true)
-    if [ -f "$WHEEL" ]; then
-        source "$VENV_DIR/bin/activate"
-        pip install --upgrade "$WHEEL"
-        deactivate
-        success "Wheel installé dans $VENV_DIR"
-        finish_task "Wheel $(basename $BUILD_DIR)" done
-    else
-        warn "Wheel non trouvé dans $BUILD_DIR"
-        finish_task "Wheel $(basename $BUILD_DIR)" warn
-    fi
-}
-
 # ==================== Exécution ====================
 mkdir -p "$TMP_DIR"
+install_system_prereqs
 install_pip_if_missing
 prepare_venv "$CPU_VENV"
 prepare_venv "$GPU_VENV"
@@ -176,8 +175,23 @@ trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU ${PID_GPU-} 2>/dev/null; e
 wait $PID_CPU
 [ "$GPU_BACKEND" != "cpu" ] && wait $PID_GPU
 
+# Installation wheels CPU
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-[ "$GPU_BACKEND" != "cpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
+
+# Installation wheels GPU (tout-en-un)
+if [ "$GPU_BACKEND" != "cpu" ]; then
+    source "$GPU_VENV/bin/activate"
+    WHEEL=$(find "$REPO/build_gpu" -name "onnxruntime-*.whl" | sort | tail -n 1)
+    if [ -f "$WHEEL" ]; then
+        info "Installation de la wheel GPU : $WHEEL"
+        pip install --upgrade "$WHEEL"
+        success "ONNX Runtime GPU installé dans $GPU_VENV"
+    else
+        warn "Wheel GPU non trouvée dans $REPO/build_gpu"
+    fi
+    deactivate
+    finish_task "Wheel build_gpu" done
+fi
 
 rm -rf "$TMP_DIR"
 show_checklist
