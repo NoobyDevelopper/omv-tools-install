@@ -136,12 +136,14 @@ build_onnxruntime_progress(){
     mkdir -p "$BUILD_DIR"
     source "$VENV_DIR/bin/activate"
     info "Compilation $(basename $BUILD_DIR) [$BACKEND]..."
+    : > "$LOG_FILE"
 
     CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON \
     -DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
     [ "$BACKEND" = "rocm" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_rocm"
     [ "$BACKEND" = "cuda" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_cuda"
 
+    # Affichage des logs en direct
     ./build.sh \
         --allow_running_as_root \
         --build_dir "$BUILD_DIR" \
@@ -159,21 +161,10 @@ build_onnxruntime_progress(){
     finish_task "Build $(basename $BUILD_DIR)" done
 }
 
-show_build_progress(){
-    local BUILD_DIRS=("$@")
-    local done=0
-    while :; do
-        done=0
-        for dir in "${BUILD_DIRS[@]}"; do
-            LOG="$TMP_DIR/${dir}.log"
-            if [ -f "$LOG" ] && grep -q "Build $(basename $dir) terminé" "$LOG"; then
-                ((done++))
-            fi
-        done
-        show_progress $done ${#BUILD_DIRS[@]}
-        [ $done -eq ${#BUILD_DIRS[@]} ] && break
-        sleep 1
-    done
+show_build_progress_sequential(){
+    local TOTAL=$1
+    local CURRENT=$2
+    show_progress "$CURRENT" "$TOTAL"
     echo ""
 }
 
@@ -207,25 +198,15 @@ rm -rf build_cpu build_gpu
 
 GPU_BACKEND=$(detect_gpu)
 
-# Builds parallèles
-build_onnxruntime_progress "$CPU_VENV" "build_cpu" "cpu" &
-PID_CPU=$!
+# Build CPU
+build_onnxruntime_progress "$CPU_VENV" "build_cpu" "cpu"
+show_build_progress_sequential 2 1
 
+# Build GPU si disponible
 if [ "$GPU_BACKEND" != "cpu" ]; then
-    build_onnxruntime_progress "$GPU_VENV" "build_gpu" "$GPU_BACKEND" &
-    PID_GPU=$!
+    build_onnxruntime_progress "$GPU_VENV" "build_gpu" "$GPU_BACKEND"
 fi
-
-# Ctrl+C gestion
-trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU ${PID_GPU-} 2>/dev/null; exit 1' SIGINT
-
-# Barre de progression live
-BUILD_LIST=("build_cpu")
-[ "$GPU_BACKEND" != "cpu" ] && BUILD_LIST+=("build_gpu")
-show_build_progress "${BUILD_LIST[@]}"
-
-wait $PID_CPU
-[ "$GPU_BACKEND" != "cpu" ] && wait $PID_GPU
+show_build_progress_sequential 2 2
 
 # Installation wheels
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
