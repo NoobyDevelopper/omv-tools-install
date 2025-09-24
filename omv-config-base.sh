@@ -45,7 +45,8 @@ show_checklist() {
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
-TASKS_TOTAL=12
+# ==================== Étapes ====================
+TASKS_TOTAL=13
 TASKS_DONE_COUNT=0
 finish_task() {
     local task="$1"
@@ -59,7 +60,6 @@ finish_task() {
     show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
 }
 
-# ==================== Étapes ====================
 STEPS=(
     "Mise à jour système"
     "Firmware AMD"
@@ -67,6 +67,7 @@ STEPS=(
     "OMV-Extras"
     "Extensions OMV"
     "Python utils"
+    "Git"
     "GPU Drivers + ROCm"
     "Groupes utilisateur"
     "OMV-KVM"
@@ -142,10 +143,23 @@ else
     finish_task "Python utils" fail
 fi
 
+# --- Git ---
+info "Vérification de Git"
+if ! command -v git &>/dev/null; then
+    if sudo apt install -y -qq git; then
+        success "Git installé"
+        finish_task "Git" done
+    else
+        finish_task "Git" fail
+    fi
+else
+    success "Git déjà présent"
+    finish_task "Git" done
+fi
+
 # --- GPU Detection + ROCm ---
 info "Détection GPU"
 GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
-
 if echo "$GPU_VENDOR" | grep -qi "amd"; then
     info "GPU AMD détecté"
     DEB_FILE="$TMP_DIR/amdgpu-install_6.4.60403-1_all.deb"
@@ -203,19 +217,16 @@ sudo apt autoremove -y
 success "Nettoyage terminé"
 finish_task "Nettoyage" done
 
-# --- Venv ---
+# --- Venv global ---
 VENV_DIR="$HOME/onnx_env"
-info "Vérification du venv"
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
-    info "Venv créé"
-fi
+info "Vérification du venv global"
+[ -d "$VENV_DIR" ] || python3 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip setuptools wheel numpy
 deactivate
-success "Venv prêt à l'emploi"
+success "Venv global prêt"
 finish_task "Venv" done
 
 # ==================== Checklist finale ====================
 show_checklist
-success "Configuration terminée !"
+success "Configuration OMV terminée !"
