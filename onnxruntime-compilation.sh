@@ -171,8 +171,7 @@ install_wheel(){
         if [ -f "$WHEEL" ]; then
             info "Installation de la wheel : $WHEEL"
             pip install --upgrade "$WHEEL"
-            echo -n "➡️  Version installée : "
-            python -c "import onnxruntime as ort; print(ort.__version__, ort.get_available_providers())"
+            python -c "import onnxruntime as ort; print('Version:', ort.__version__, 'Providers:', ort.get_available_providers())"
             success "ONNX Runtime installé dans $VENV_DIR"
             finish_task "Wheel $(basename $BUILD_DIR)" done
             return
@@ -180,6 +179,29 @@ install_wheel(){
     fi
     warn "Wheel non trouvée dans $WHEEL_DIR"
     finish_task "Wheel $(basename $BUILD_DIR)" warn
+}
+
+install_wheels_from_backup(){
+    mkdir -p "$WHEEL_BACKUP"
+    FOUND=0
+    for WHEEL in "$WHEEL_BACKUP"/onnxruntime-*.whl; do
+        if [ -f "$WHEEL" ]; then
+            FOUND=1
+            TARGET_VENV="$CPU_VENV"
+            source "$TARGET_VENV/bin/activate"
+            info "Installation de la wheel existante depuis le backup : $WHEEL"
+            pip install --upgrade "$WHEEL"
+            python -c "import onnxruntime as ort; print('Version:', ort.__version__, 'Providers:', ort.get_available_providers())"
+            deactivate
+            finish_task "Wheel $(basename $WHEEL)" done
+        fi
+    done
+    if [ "$FOUND" -eq 1 ]; then
+        success "Toutes les wheels du backup installées dans les venv."
+        exit 0
+    else
+        info "Aucune wheel trouvée dans le backup, compilation nécessaire."
+    fi
 }
 
 backup_wheels_and_cleanup(){
@@ -191,8 +213,6 @@ backup_wheels_and_cleanup(){
         fi
     done
     success "Toutes les wheels copiées dans $WHEEL_BACKUP"
-
-    # Suppression des dossiers de build
     rm -rf "$REPO/build_cpu" "$REPO/build_gpu"
     success "Dossiers de build supprimés pour libérer de l'espace"
 }
@@ -204,8 +224,10 @@ install_system_prereqs
 install_pip_if_missing
 prepare_venv "$CPU_VENV"
 prepare_venv "$GPU_VENV"
-clone_or_update_repo
 
+install_wheels_from_backup  # <-- tentative d'installation depuis backup
+
+clone_or_update_repo
 cd "$REPO"
 
 GPU_BACKEND=$(detect_gpu)
