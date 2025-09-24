@@ -69,7 +69,20 @@ prepare_venv() {
     info "Préparation du venv : $VENV_DIR"
     [ -d "$VENV_DIR" ] || python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
-    pip install --upgrade pip setuptools wheel packaging ninja flatbuffers numpy
+
+    # pip à jour + dépendances
+    pip install --upgrade pip setuptools wheel packaging numpy flatbuffers
+
+    # cmake et ninja si absents
+    if ! command -v cmake &>/dev/null; then
+        info "Installation cmake dans le venv"
+        pip install cmake
+    fi
+    if ! command -v ninja &>/dev/null; then
+        info "Installation ninja dans le venv"
+        pip install ninja
+    fi
+
     deactivate
     success "Venv prêt : $VENV_DIR"
     finish_task "Venv $(basename $VENV_DIR)" done
@@ -104,6 +117,18 @@ append_cxx_flags() {
     echo "$FLAGS"
 }
 
+detect_gpu_rocm() {
+    local GPU_VENDOR
+    GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -i amd || true)
+    if [ -n "$GPU_VENDOR" ]; then
+        info "GPU AMD compatible ROCm détecté"
+        return 0
+    else
+        warn "Aucun GPU AMD ROCm détecté, compilation GPU désactivée"
+        return 1
+    fi
+}
+
 build_onnxruntime() {
     local VENV_DIR=$1
     local BUILD_DIR=$2
@@ -116,6 +141,8 @@ build_onnxruntime() {
     fi
 
     source "$VENV_DIR/bin/activate"
+    export PATH="$VENV_DIR/bin:$PATH"
+
     ./build.sh \
         --allow_running_as_root \
         --build_dir "$BUILD_DIR" \
@@ -130,6 +157,7 @@ build_onnxruntime() {
         --cmake_extra_defines CMAKE_CXX_FLAGS="$(append_cxx_flags)" \
                              ONNXRUNTIME_DISABLE_WARNINGS=ON \
                              ONNX_DISABLE_WARNINGS=ON
+
     deactivate
     success "Compilation $(basename $BUILD_DIR) terminée"
     finish_task "Build $(basename $BUILD_DIR)" done
@@ -155,28 +183,34 @@ install_wheel() {
 # ==================== Exécution ====================
 prepare_venv "$CPU_VENV"
 prepare_venv "$GPU_VENV"
-
 clone_or_update_repo
 
 cd "$REPO"
 rm -rf build_cpu build_gpu
 
+# Build CPU
 build_onnxruntime "$CPU_VENV" "build_cpu" &
 PID_CPU=$!
-build_onnxruntime "$GPU_VENV" "build_gpu" 1 &
-PID_GPU=$!
 
-trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU $PID_GPU 2>/dev/null; exit 1' SIGINT
+# Build GPU seulement si ROCm disponible
+if detect_gpu_rocm; then
+    build_onnxruntime "$GPU_VENV" "build_gpu" 1 &
+    PID_GPU=$!
+else
+    PID_GPU=0
+fi
+
+trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU ${PID_GPU:-0} 2>/dev/null; exit 1' SIGINT
 
 wait $PID_CPU
-wait $PID_GPU
+[ "$PID_GPU" -ne 0 ] && wait $PID_GPU
 
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-install_wheel "$GPU_VENV" "$REPO/build_gpu"
+[ "$PID_GPU" -ne 0 ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
 
 # ==================== Checklist finale ====================
 echo -e "\n# ==================== Checklist ===================="
 [ -f "$CPU_VENV/bin/python3" ] && success "ONNX Runtime CPU disponible"
-[ -f "$GPU_VENV/bin/python3" ] && success "ONNX Runtime GPU (ROCm) disponible"
+[ "$PID_GPU" -ne 0 ] && [ -f "$GPU_VENV/bin/python3" ] && success "ONNX Runtime GPU (ROCm) disponible"
 show_checklist
 success "Configuration ONNX Runtime terminée !"
