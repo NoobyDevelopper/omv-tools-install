@@ -1,35 +1,29 @@
 #!/bin/bash
 set -euo pipefail
-
 clear
 
-# ==================== Couleurs ====================
-BLUE='\033[1;34m'
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-RED='\033[1;31m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
-success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error()   { echo -e "${RED}[ERROR] $*"; }
-
-# ==================== Variables ====================
+# ==================== Config ====================
 CPU_VENV="$HOME/onnx_cpu_env"
 GPU_VENV="$HOME/onnx_gpu_env"
 WORKDIR="$HOME/onnxruntime_build"
 REPO="$WORKDIR/onnxruntime"
 NPROC=$(nproc)
+TMP_DIR="/tmp/onnxruntime_tmp"
 
-# ==================== Checklist ====================
+# ==================== Couleurs ====================
+BLUE='\033[1;34m'; LIGHT_BLUE='\033[1;36m'; GREEN='\033[1;32m'
+YELLOW='\033[1;33m'; RED='\033[1;31m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+info(){ echo -e "${BLUE}[INFO]${NC} ${LIGHT_BLUE}$*${NC}"; }
+success(){ echo -e "${GREEN}[SUCCESS]${NC} $*"; }
+warn(){ echo -e "${YELLOW}[WARN]${NC} $*"; }
+error(){ echo -e "${RED}[ERROR] $*${NC}"; }
+
 declare -A CHECKLIST
-mark_done() { CHECKLIST["$1"]="✅"; }
-mark_warn() { CHECKLIST["$1"]="⚠️"; }
-mark_fail() { CHECKLIST["$1"]="❌"; }
-
-show_checklist() {
+mark_done(){ CHECKLIST["$1"]="✅"; }
+mark_warn(){ CHECKLIST["$1"]="⚠️"; }
+mark_fail(){ CHECKLIST["$1"]="❌"; }
+show_checklist(){
     echo -e "\n${CYAN}==================== Checklist ====================${NC}"
     for task in "${!CHECKLIST[@]}"; do
         echo -e "${CHECKLIST[$task]} $task"
@@ -37,93 +31,154 @@ show_checklist() {
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
+TASKS_TOTAL=10
+TASKS_DONE_COUNT=0
+finish_task(){
+    local task="$1"; local status="$2"
+    case "$status" in
+        done) mark_done "$task";;
+        warn) mark_warn "$task";;
+        fail) mark_fail "$task";;
+    esac
+    TASKS_DONE_COUNT=$((TASKS_DONE_COUNT+1))
+}
+
+show_progress(){
+    local done=$1; local total=$2; local width=40
+    local percent=$(( done * 100 / total )); local filled=$(( percent * width / 100 ))
+    local empty=$(( width - filled ))
+    printf "\r${BLUE}[PROGRESS]${NC} ${BLUE}|"; printf '%0.s█' $(seq 1 $filled)
+    printf '%0.s ' $(seq 1 $empty); printf "| %3d%% (%d/%d)${NC}" $percent $done $total
+}
+
 # ==================== Fonctions ====================
-prepare_venv() {
+install_pip_if_missing(){
+    if ! command -v pip3 &>/dev/null; then
+        info "Installation de pip..."
+        wget -q https://bootstrap.pypa.io/get-pip.py -O "$TMP_DIR/get-pip.py"
+        python3 "$TMP_DIR/get-pip.py"
+        rm -f "$TMP_DIR/get-pip.py"
+        success "pip installé"
+    else
+        success "pip déjà présent"
+    fi
+    finish_task "pip" done
+}
+
+prepare_venv(){
     local VENV_DIR=$1
     info "Préparation du venv : $VENV_DIR"
     [ -d "$VENV_DIR" ] || python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
-    pip install --upgrade pip setuptools wheel packaging ninja flatbuffers numpy cmake
+    pip install --upgrade pip setuptools wheel packaging ninja cmake flatbuffers numpy
     deactivate
     success "Venv prêt : $VENV_DIR"
-    mark_done "Venv $(basename $VENV_DIR)"
+    finish_task "Venv $(basename $VENV_DIR)" done
 }
 
-clone_or_update_repo() {
-    mkdir -p "$WORKDIR"
-    cd "$WORKDIR"
+clone_or_update_repo(){
+    mkdir -p "$WORKDIR"; cd "$WORKDIR"
     if [ ! -d "$REPO" ]; then
-        info "Clonage du dépôt ONNX Runtime..."
-        git clone --recursive https://github.com/microsoft/onnxruntime
+        info "Clonage ONNX Runtime..."
+        git clone --recursive https://github.com/microsoft/onnxruntime || { finish_task "Git Repo" fail; return; }
         success "Dépôt cloné"
-        mark_done "Git Repo"
+        finish_task "Git Repo" done
     else
         info "Mise à jour du dépôt existant..."
         cd "$REPO"
+        [ -f .git/config.lock ] && rm -f .git/config.lock
         git fetch origin
-        git reset --hard origin/main
-        git submodule update --init --recursive || true
+        git checkout main || git checkout master || true
+        git pull --ff-only || true
+        git submodule sync --recursive || true
+        git submodule update --init --recursive
         success "Dépôt mis à jour"
-        mark_done "Git Repo"
+        finish_task "Git Repo" done
     fi
 }
 
-build_onnxruntime() {
-    local VENV_DIR=$1
-    local BUILD_DIR=$2
-    local USE_ROCM=${3:-0}
-
-    source "$VENV_DIR/bin/activate"
-    mkdir -p "$BUILD_DIR"
-    cd "$BUILD_DIR"
-
-    CMAKE_FLAGS="-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
--DONNXRUNTIME_DISABLE_WARNINGS=ON \
--DONNX_DISABLE_WARNINGS=ON \
--DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable'"
-
-    info "Génération CMake pour $(basename $BUILD_DIR)..."
-    cmake "$REPO" -G Ninja $CMAKE_FLAGS $( [ "$USE_ROCM" -eq 1 ] && echo "-Donnxruntime_USE_ROCM=ON" )
-
-    info "Compilation $(basename $BUILD_DIR)..."
-    ninja -j"$NPROC"
-    success "Compilation $(basename $BUILD_DIR) terminée"
-    mark_done "Build $(basename $BUILD_DIR)"
-    deactivate
+detect_gpu(){
+    GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
+    if echo "$GPU_VENDOR" | grep -qi "amd"; then
+        info "GPU AMD détecté (ROCm activé)"
+        echo "rocm"
+    elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
+        info "GPU NVIDIA détecté (CUDA activé)"
+        echo "cuda"
+    else
+        warn "Aucun GPU compatible détecté, compilation CPU uniquement"
+        echo "cpu"
+    fi
 }
 
-install_wheel() {
+build_onnxruntime(){
     local VENV_DIR=$1
     local BUILD_DIR=$2
-    local WHEEL
+    local BACKEND=$3
+    source "$VENV_DIR/bin/activate"
+    mkdir -p "$BUILD_DIR"
+    info "Compilation $(basename $BUILD_DIR) [$BACKEND]..."
+    CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON -DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    [ "$BACKEND" = "rocm" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_rocm"
+    [ "$BACKEND" = "cuda" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_cuda"
+    ./build.sh \
+        --allow_running_as_root \
+        --build_dir "$BUILD_DIR" \
+        --config Release \
+        --build_wheel \
+        --update \
+        --build \
+        --parallel "$NPROC" \
+        --skip_tests \
+        --cmake_generator Ninja \
+        --cmake_extra_defines "$CMAKE_DEFINES"
+    deactivate
+    success "Build $(basename $BUILD_DIR) terminé"
+    finish_task "Build $(basename $BUILD_DIR)" done
+}
+
+install_wheel(){
+    local VENV_DIR=$1
+    local BUILD_DIR=$2
     WHEEL=$(find "$BUILD_DIR" -name "onnxruntime-*.whl" | sort | tail -n 1 || true)
     if [ -f "$WHEEL" ]; then
         source "$VENV_DIR/bin/activate"
         pip install --upgrade "$WHEEL"
         deactivate
         success "Wheel installé dans $VENV_DIR"
-        mark_done "Wheel $(basename $BUILD_DIR)"
+        finish_task "Wheel $(basename $BUILD_DIR)" done
     else
-        error "Wheel non trouvé dans $BUILD_DIR"
-        mark_fail "Wheel $(basename $BUILD_DIR)"
+        warn "Wheel non trouvé dans $BUILD_DIR"
+        finish_task "Wheel $(basename $BUILD_DIR)" warn
     fi
 }
 
 # ==================== Exécution ====================
+mkdir -p "$TMP_DIR"
+install_pip_if_missing
 prepare_venv "$CPU_VENV"
 prepare_venv "$GPU_VENV"
 clone_or_update_repo
 
-rm -rf "$REPO/build_cpu" "$REPO/build_gpu"
+cd "$REPO"
+rm -rf build_cpu build_gpu
 
-build_onnxruntime "$CPU_VENV" "$REPO/build_cpu"
-build_onnxruntime "$GPU_VENV" "$REPO/build_gpu" 1
+GPU_BACKEND=$(detect_gpu)
+
+# Compilation parallèle
+build_onnxruntime "$CPU_VENV" "build_cpu" "cpu" &
+PID_CPU=$!
+[ "$GPU_BACKEND" != "cpu" ] && build_onnxruntime "$GPU_VENV" "build_gpu" "$GPU_BACKEND" &
+PID_GPU=$!
+
+trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU ${PID_GPU-} 2>/dev/null; exit 1' SIGINT
+
+wait $PID_CPU
+[ "$GPU_BACKEND" != "cpu" ] && wait $PID_GPU
 
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-install_wheel "$GPU_VENV" "$REPO/build_gpu"
+[ "$GPU_BACKEND" != "cpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
 
-# ==================== Checklist finale ====================
-[ -f "$CPU_VENV/bin/python3" ] && success "ONNX Runtime CPU disponible"
-[ -f "$GPU_VENV/bin/python3" ] && success "ONNX Runtime GPU (ROCm) disponible"
+rm -rf "$TMP_DIR"
 show_checklist
-success "Configuration ONNX Runtime terminée !"
+success "ONNX Runtime CPU et GPU prêts !"
