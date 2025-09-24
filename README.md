@@ -8,7 +8,7 @@ POUR OMV 7.4.17 intel/NVIDIA/AMDGPU tester RADEON RX 7600XT
         cd omv-tools-install && chmod +x launcher.sh && sudo ./launcher.sh
 
 
-recuper le launcher.sh  ( le launcher peut buguer donc prendre direct script omv-config-base )
+recuper le launcher.sh
 
 pas dev fait par chatgpt je decline toute responsabilite
 
