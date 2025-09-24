@@ -9,6 +9,7 @@ WORKDIR="$HOME/onnxruntime_build"
 REPO="$WORKDIR/onnxruntime"
 NPROC=$(nproc)
 TMP_DIR="/tmp/onnxruntime_tmp"
+WHEEL_BACKUP="$HOME/onnxruntime_wheels_backup"
 
 # ==================== Couleurs ====================
 BLUE='\033[1;34m'; LIGHT_BLUE='\033[1;36m'; GREEN='\033[1;32m'
@@ -51,7 +52,6 @@ show_progress(){
 }
 
 # ==================== Fonctions ====================
-
 install_system_prereqs(){
     info "Installation des prérequis système..."
     if command -v apt &>/dev/null; then
@@ -127,18 +127,11 @@ detect_gpu(){
     fi
 }
 
-build_onnxruntime_progress(){
+build_onnxruntime(){
     local VENV_DIR=$1
     local BUILD_DIR=$2
     local BACKEND=$3
     local LOG_FILE="$TMP_DIR/${BUILD_DIR}.log"
-    local WHEEL_DIR="$BUILD_DIR/Release/dist"
-
-    # Si la wheel existe déjà, on saute le build
-    if [ -d "$WHEEL_DIR" ] && find "$WHEEL_DIR" -name "onnxruntime-*.whl" | grep -q .; then
-        info "Wheel déjà présente pour $BACKEND, compilation ignorée."
-        return
-    fi
 
     mkdir -p "$BUILD_DIR"
     source "$VENV_DIR/bin/activate"
@@ -167,13 +160,6 @@ build_onnxruntime_progress(){
     finish_task "Build $(basename $BUILD_DIR)" done
 }
 
-show_build_progress_sequential(){
-    local TOTAL=$1
-    local CURRENT=$2
-    show_progress "$CURRENT" "$TOTAL"
-    echo ""
-}
-
 install_wheel(){
     local VENV_DIR=$1
     local BUILD_DIR=$2
@@ -196,6 +182,21 @@ install_wheel(){
     finish_task "Wheel $(basename $BUILD_DIR)" warn
 }
 
+backup_wheels_and_cleanup(){
+    mkdir -p "$WHEEL_BACKUP"
+    for BUILD_DIR in "$REPO/build_cpu" "$REPO/build_gpu"; do
+        WHEEL_DIR="$BUILD_DIR/Release/dist"
+        if [ -d "$WHEEL_DIR" ]; then
+            cp "$WHEEL_DIR"/*.whl "$WHEEL_BACKUP"/ 2>/dev/null || true
+        fi
+    done
+    success "Toutes les wheels copiées dans $WHEEL_BACKUP"
+
+    # Suppression des dossiers de build
+    rm -rf "$REPO/build_cpu" "$REPO/build_gpu"
+    success "Dossiers de build supprimés pour libérer de l'espace"
+}
+
 # ==================== Exécution ====================
 mkdir -p "$TMP_DIR"
 
@@ -209,20 +210,17 @@ cd "$REPO"
 
 GPU_BACKEND=$(detect_gpu)
 
-# Build CPU
-build_onnxruntime_progress "$CPU_VENV" "build_cpu" "cpu"
-show_build_progress_sequential 2 1
+# Build CPU puis GPU séquentiellement
+build_onnxruntime "$CPU_VENV" "build_cpu" "cpu"
+[ "$GPU_BACKEND" != "cpu" ] && build_onnxruntime "$GPU_VENV" "build_gpu" "$GPU_BACKEND"
 
-# Build GPU si dispo
-if [ "$GPU_BACKEND" != "cpu" ]; then
-    build_onnxruntime_progress "$GPU_VENV" "build_gpu" "$GPU_BACKEND"
-fi
-show_build_progress_sequential 2 2
-
-# Installation wheels
+# Installation des wheels dans les venv
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
 [ "$GPU_BACKEND" != "cpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
 
+# Backup des wheels et nettoyage des builds
+backup_wheels_and_cleanup
+
 rm -rf "$TMP_DIR"
 show_checklist
-success "ONNX Runtime CPU et GPU prêts !"
+success "ONNX Runtime CPU et GPU prêts et wheels sauvegardées ! ✅"
