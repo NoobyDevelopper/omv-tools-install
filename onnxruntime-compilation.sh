@@ -17,7 +17,6 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR] $*${NC}"; }
 
-# ==================== Progress Bar ====================
 show_progress() {
     local done=$1
     local total=$2
@@ -31,7 +30,6 @@ show_progress() {
     printf "| %3d%% (%d/%d)${NC}" $percent $done $total
 }
 
-# ==================== Checklist ====================
 declare -A CHECKLIST
 mark_done() { CHECKLIST["$1"]="✅"; }
 mark_warn() { CHECKLIST["$1"]="⚠️"; }
@@ -44,14 +42,14 @@ show_checklist() {
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
-# ==================== Configuration ====================
+# ==================== Variables ====================
 CPU_VENV="$HOME/onnx_cpu_env"
 GPU_VENV="$HOME/onnx_gpu_env"
 WORKDIR="$HOME/onnxruntime_build"
 REPO="$WORKDIR/onnxruntime"
 NPROC=$(nproc)
 
-TASKS_TOTAL=8
+TASKS_TOTAL=12
 TASKS_DONE_COUNT=0
 finish_task() {
     local task="$1"
@@ -65,7 +63,19 @@ finish_task() {
     show_progress $TASKS_DONE_COUNT $TASKS_TOTAL
 }
 
-# ==================== Fonctions ====================
+# ==================== Pré-requis système ====================
+install_prereqs() {
+    info "Installation des dépendances système..."
+    sudo apt update -qq
+    sudo apt install -y -qq \
+        build-essential git wget python3-venv python3-pip python3-setuptools python3-wheel \
+        cmake ninja-build pkg-config libssl-dev libprotobuf-dev protobuf-compiler \
+        libopenblas-dev curl
+    success "Dépendances système installées"
+    finish_task "Prérequis système" done
+}
+
+# ==================== Venv ====================
 prepare_venv() {
     local VENV_DIR=$1
     info "Préparation du venv : $VENV_DIR"
@@ -77,6 +87,7 @@ prepare_venv() {
     finish_task "Venv $(basename $VENV_DIR)" done
 }
 
+# ==================== Repo ONNX Runtime ====================
 clone_or_update_repo() {
     mkdir -p "$WORKDIR"
     cd "$WORKDIR"
@@ -88,22 +99,13 @@ clone_or_update_repo() {
     else
         info "Mise à jour du dépôt existant..."
         cd "$REPO"
-
-        # --- Nettoyage automatique des locks Git ---
-        if [ -f .git/config.lock ]; then
-            warn "Fichier .git/config.lock détecté, suppression..."
-            rm -f .git/config.lock
-        fi
-
-        # --- Synchronisation et réinitialisation des sous-modules ---
+        [ -f .git/config.lock ] && rm -f .git/config.lock
         git submodule deinit -f . || true
         git submodule sync --recursive || true
         git submodule update --init --recursive || true
-
         git fetch origin
         git checkout main || git checkout master || true
         git pull --ff-only || true
-
         success "Dépôt mis à jour"
         finish_task "Git Repo" done
     fi
@@ -111,12 +113,11 @@ clone_or_update_repo() {
 
 append_cxx_flags() {
     local FLAGS="-Wno-unused-parameter -Wunused-variable"
-    if [ -n "${CMAKE_CXX_FLAGS-}" ]; then
-        FLAGS="$CMAKE_CXX_FLAGS $FLAGS"
-    fi
+    [ -n "${CMAKE_CXX_FLAGS-}" ] && FLAGS="$CMAKE_CXX_FLAGS $FLAGS"
     echo "$FLAGS"
 }
 
+# ==================== Build ONNX Runtime ====================
 build_onnxruntime() {
     local VENV_DIR=$1
     local BUILD_DIR=$2
@@ -166,9 +167,9 @@ install_wheel() {
 }
 
 # ==================== Exécution ====================
+install_prereqs
 prepare_venv "$CPU_VENV"
 prepare_venv "$GPU_VENV"
-
 clone_or_update_repo
 
 cd "$REPO"
