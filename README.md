@@ -19,36 +19,58 @@ OMV Config Base - Script
 Automatisation complète de la configuration de base pour OpenMediaVault avec support GPU et Python.
         
 Fonctionnalités clés :
-        
-        Mise à jour du système (apt update/upgrade)
-        
-        Firmware AMD graphique
-        
-        Installation de wget
-        
-        OMV-Extras et extensions OMV (ClamAV, CTerm, DiskStats, Fail2Ban, MD, ShareRootFS)
-        
-        Outils Python (python3-venv, pip, setuptools, wheel)
-        
-        Détection automatique GPU et installation des drivers adaptés :
-        
-        AMD → ROCm
-        
-        NVIDIA → CUDA
-        
-        Intel → Intel GPU Tools
-        
-        Ajout de l’utilisateur aux groupes render et video
-        
-        Installation KVM (openmediavault-kvm)
-        
-        OMV-Compose + Docker Compose
-        
-        Nettoyage des paquets inutiles (apt autoremove)
-        
-        Création d’un venv Python avec onnxruntime, onnx et numpy
-        
-        Checklist finale : ✔ toutes les étapes sont terminées et prêtes à l’usage.
+# Checklist d'installation OMV et configuration GPU/venv
+
+- [ ] **Mise à jour système**  
+  - `apt update` et `apt upgrade`  
+  - Vérification des paquets à jour
+
+- [ ] **Firmware AMD**  
+  - Vérification si `firmware-amd-graphics` installé  
+  - Installation si absent
+
+- [ ] **wget**  
+  - Vérification de la présence de `wget`  
+  - Installation si nécessaire
+
+- [ ] **OMV-Extras**  
+  - Téléchargement et installation du script OMV-Extras
+
+- [ ] **Extensions OMV**  
+  - `openmediavault-clamav`, `openmediavault-cterm`, `openmediavault-diskstats`, etc.  
+
+- [ ] **Python utils**  
+  - `python3-venv`, `python3-pip`, `python3-setuptools`, `python3-wheel`
+
+- [ ] **Git**  
+  - Vérification de Git  
+  - Installation si absent
+
+- [ ] **GPU Drivers + ROCm / CUDA / Intel**  
+  - Détection GPU : AMD → ROCm, NVIDIA → CUDA, Intel → drivers Intel  
+  - Installation des pilotes  
+  - Ajout utilisateur aux groupes `render` et `video`
+
+- [ ] **Groupes utilisateur**  
+  - Ajouter l’utilisateur courant aux groupes `render` et `video`
+
+- [ ] **OMV-KVM**  
+  - Installation de `openmediavault-kvm`
+
+- [ ] **OMV-Compose + Docker**  
+  - Installation de `openmediavault-compose` (Docker inclus)
+
+- [ ] **Nettoyage automatique**  
+  - Suppression des fichiers temporaires et caches  
+  - `apt clean` et `apt autoremove`
+
+- [ ] **Venv global**  
+  - Création du venv global `~/onnx_env`  
+  - Installation de pip, setuptools, wheel, numpy
+
+- [ ] **Wake-on-LAN automatique**  
+  - Détection de l’interface principale  
+  - Activation WOL avec `ethtool` si disponible
 
 ONNX Runtime Builder ✅
 
