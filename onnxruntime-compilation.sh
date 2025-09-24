@@ -31,7 +31,6 @@ show_checklist(){
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
-TASKS_TOTAL=13
 TASKS_DONE_COUNT=0
 finish_task(){
     local task="$1"; local status="$2"
@@ -52,6 +51,7 @@ show_progress(){
 }
 
 # ==================== Fonctions ====================
+
 install_system_prereqs(){
     info "Installation des prérequis système..."
     if command -v apt &>/dev/null; then
@@ -60,7 +60,7 @@ install_system_prereqs(){
     elif command -v pacman &>/dev/null; then
         sudo pacman -Sy --noconfirm git cmake ninja python python-pip base-devel wget curl
     else
-        warn "Gestionnaire de paquets non reconnu, installer manuellement git, cmake, ninja, python-dev..."
+        warn "Gestionnaire de paquets non reconnu, installer git, cmake, ninja, python-dev..."
     fi
     success "Pré-requis système installés"
     finish_task "System Prereqs" done
@@ -69,6 +69,7 @@ install_system_prereqs(){
 install_pip_if_missing(){
     if ! command -v pip3 &>/dev/null; then
         info "Installation de pip..."
+        mkdir -p "$TMP_DIR"
         wget -q https://bootstrap.pypa.io/get-pip.py -O "$TMP_DIR/get-pip.py"
         python3 "$TMP_DIR/get-pip.py"
         rm -f "$TMP_DIR/get-pip.py"
@@ -100,11 +101,12 @@ clone_or_update_repo(){
     else
         info "Mise à jour du dépôt existant..."
         cd "$REPO"
-        [ -f .git/config.lock ] && rm -f .git/config.lock
+        info "Nettoyage des fichiers lock Git..."
+        find .git -name "*.lock" -type f -exec rm -f {} +
         git fetch origin
         git checkout main || git checkout master || true
         git pull --ff-only || true
-        git submodule sync --recursive || true
+        git submodule sync --recursive
         git submodule update --init --recursive
         success "Dépôt mis à jour"
         finish_task "Git Repo" done
@@ -125,16 +127,21 @@ detect_gpu(){
     fi
 }
 
-build_onnxruntime(){
+build_onnxruntime_progress(){
     local VENV_DIR=$1
     local BUILD_DIR=$2
     local BACKEND=$3
-    source "$VENV_DIR/bin/activate"
+    local LOG_FILE="$TMP_DIR/${BUILD_DIR}.log"
+
     mkdir -p "$BUILD_DIR"
+    source "$VENV_DIR/bin/activate"
     info "Compilation $(basename $BUILD_DIR) [$BACKEND]..."
-    CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON -DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+
+    CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON \
+    -DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
     [ "$BACKEND" = "rocm" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_rocm"
     [ "$BACKEND" = "cuda" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_cuda"
+
     ./build.sh \
         --allow_running_as_root \
         --build_dir "$BUILD_DIR" \
@@ -145,14 +152,50 @@ build_onnxruntime(){
         --parallel "$NPROC" \
         --skip_tests \
         --cmake_generator Ninja \
-        --cmake_extra_defines "$CMAKE_DEFINES"
+        --cmake_extra_defines "$CMAKE_DEFINES" 2>&1 | tee "$LOG_FILE"
+
     deactivate
     success "Build $(basename $BUILD_DIR) terminé"
     finish_task "Build $(basename $BUILD_DIR)" done
 }
 
+show_build_progress(){
+    local BUILD_DIRS=("$@")
+    local done=0
+    while :; do
+        done=0
+        for dir in "${BUILD_DIRS[@]}"; do
+            LOG="$TMP_DIR/${dir}.log"
+            if [ -f "$LOG" ] && grep -q "Build $(basename $dir) terminé" "$LOG"; then
+                ((done++))
+            fi
+        done
+        show_progress $done ${#BUILD_DIRS[@]}
+        [ $done -eq ${#BUILD_DIRS[@]} ] && break
+        sleep 1
+    done
+    echo ""
+}
+
+install_wheel(){
+    local VENV_DIR=$1
+    local BUILD_DIR=$2
+    source "$VENV_DIR/bin/activate"
+    WHEEL=$(find "$BUILD_DIR" -name "onnxruntime-*.whl" | sort | tail -n 1)
+    if [ -f "$WHEEL" ]; then
+        info "Installation de la wheel : $WHEEL"
+        pip install --upgrade "$WHEEL"
+        success "ONNX Runtime installé dans $VENV_DIR"
+    else
+        warn "Wheel non trouvée dans $BUILD_DIR"
+    fi
+    deactivate
+    finish_task "Wheel $(basename $BUILD_DIR)" done
+}
+
 # ==================== Exécution ====================
 mkdir -p "$TMP_DIR"
+
 install_system_prereqs
 install_pip_if_missing
 prepare_venv "$CPU_VENV"
@@ -164,34 +207,29 @@ rm -rf build_cpu build_gpu
 
 GPU_BACKEND=$(detect_gpu)
 
-# Compilation parallèle
-build_onnxruntime "$CPU_VENV" "build_cpu" "cpu" &
+# Builds parallèles
+build_onnxruntime_progress "$CPU_VENV" "build_cpu" "cpu" &
 PID_CPU=$!
-[ "$GPU_BACKEND" != "cpu" ] && build_onnxruntime "$GPU_VENV" "build_gpu" "$GPU_BACKEND" &
-PID_GPU=$!
 
+if [ "$GPU_BACKEND" != "cpu" ]; then
+    build_onnxruntime_progress "$GPU_VENV" "build_gpu" "$GPU_BACKEND" &
+    PID_GPU=$!
+fi
+
+# Ctrl+C gestion
 trap 'echo -e "\n[INFO] Annulation..."; kill $PID_CPU ${PID_GPU-} 2>/dev/null; exit 1' SIGINT
+
+# Barre de progression live
+BUILD_LIST=("build_cpu")
+[ "$GPU_BACKEND" != "cpu" ] && BUILD_LIST+=("build_gpu")
+show_build_progress "${BUILD_LIST[@]}"
 
 wait $PID_CPU
 [ "$GPU_BACKEND" != "cpu" ] && wait $PID_GPU
 
-# Installation wheels CPU
+# Installation wheels
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-
-# Installation wheels GPU (tout-en-un)
-if [ "$GPU_BACKEND" != "cpu" ]; then
-    source "$GPU_VENV/bin/activate"
-    WHEEL=$(find "$REPO/build_gpu" -name "onnxruntime-*.whl" | sort | tail -n 1)
-    if [ -f "$WHEEL" ]; then
-        info "Installation de la wheel GPU : $WHEEL"
-        pip install --upgrade "$WHEEL"
-        success "ONNX Runtime GPU installé dans $GPU_VENV"
-    else
-        warn "Wheel GPU non trouvée dans $REPO/build_gpu"
-    fi
-    deactivate
-    finish_task "Wheel build_gpu" done
-fi
+[ "$GPU_BACKEND" != "cpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
 
 rm -rf "$TMP_DIR"
 show_checklist
