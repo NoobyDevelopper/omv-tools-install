@@ -143,7 +143,6 @@ build_onnxruntime_progress(){
     [ "$BACKEND" = "rocm" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_rocm"
     [ "$BACKEND" = "cuda" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_cuda"
 
-    # Affichage des logs en direct
     ./build.sh \
         --allow_running_as_root \
         --build_dir "$BUILD_DIR" \
@@ -172,13 +171,16 @@ install_wheel(){
     local VENV_DIR=$1
     local BUILD_DIR=$2
     source "$VENV_DIR/bin/activate"
-    WHEEL=$(find "$BUILD_DIR" -name "onnxruntime-*.whl" | sort | tail -n 1)
+
+    WHEEL=$(find "$BUILD_DIR/Release/dist" -name "onnxruntime-*.whl" | sort | tail -n 1)
     if [ -f "$WHEEL" ]; then
         info "Installation de la wheel : $WHEEL"
         pip install --upgrade "$WHEEL"
+        echo -n "➡️  Version installée : "
+        python -c "import onnxruntime as ort; print(ort.__version__, ort.get_available_providers())"
         success "ONNX Runtime installé dans $VENV_DIR"
     else
-        warn "Wheel non trouvée dans $BUILD_DIR"
+        warn "Wheel non trouvée dans $BUILD_DIR/Release/dist/"
     fi
     deactivate
     finish_task "Wheel $(basename $BUILD_DIR)" done
@@ -202,7 +204,7 @@ GPU_BACKEND=$(detect_gpu)
 build_onnxruntime_progress "$CPU_VENV" "build_cpu" "cpu"
 show_build_progress_sequential 2 1
 
-# Build GPU si disponible
+# Build GPU si dispo
 if [ "$GPU_BACKEND" != "cpu" ]; then
     build_onnxruntime_progress "$GPU_VENV" "build_gpu" "$GPU_BACKEND"
 fi
