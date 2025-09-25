@@ -9,6 +9,7 @@ WORKDIR="$HOME/onnxruntime_build"
 REPO="$WORKDIR/onnxruntime"
 NPROC=$(nproc)
 TMP_DIR="/tmp/onnxruntime_tmp"
+WHEEL_BACKUP="$HOME/onnx_wheels_backup"
 
 # ==================== Couleurs ====================
 BLUE='\033[1;34m'; LIGHT_BLUE='\033[1;36m'; GREEN='\033[1;32m'
@@ -23,6 +24,7 @@ declare -A CHECKLIST
 mark_done(){ CHECKLIST["$1"]="✅"; }
 mark_warn(){ CHECKLIST["$1"]="⚠️"; }
 mark_fail(){ CHECKLIST["$1"]="❌"; }
+
 show_checklist(){
     echo -e "\n${CYAN}==================== Checklist ====================${NC}"
     for task in "${!CHECKLIST[@]}"; do
@@ -31,7 +33,6 @@ show_checklist(){
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
-TASKS_DONE_COUNT=0
 finish_task(){
     local task="$1"; local status="$2"
     case "$status" in
@@ -39,17 +40,17 @@ finish_task(){
         warn) mark_warn "$task";;
         fail) mark_fail "$task";;
     esac
-    TASKS_DONE_COUNT=$((TASKS_DONE_COUNT+1))
 }
 
 # ==================== Fonctions ====================
+
 install_system_prereqs(){
     info "Installation des prérequis système..."
     if command -v apt &>/dev/null; then
         sudo apt update
         sudo apt install -y git cmake ninja-build python3-dev build-essential wget curl lsb-release
     else
-        warn "Gestionnaire de paquets non reconnu"
+        warn "Gestionnaire de paquets non reconnu, installer git, cmake, ninja, python-dev..."
     fi
     success "Pré-requis système installés"
     finish_task "System Prereqs" done
@@ -69,19 +70,17 @@ prepare_venv(){
 clone_or_update_repo(){
     mkdir -p "$WORKDIR"; cd "$WORKDIR"
     if [ ! -d "$REPO" ]; then
-        info "Clonage ONNX Runtime 1.23..."
+        info "Clonage ONNX Runtime..."
         git clone --recursive https://github.com/microsoft/onnxruntime || { finish_task "Git Repo" fail; return; }
-        cd "$REPO"
-        git checkout v1.23.0 || warn "v1.23.0 non trouvé"
-        git submodule update --init --recursive
         success "Dépôt cloné"
         finish_task "Git Repo" done
     else
         info "Mise à jour du dépôt existant..."
         cd "$REPO"
         git fetch origin
-        git checkout v1.23.0 || warn "v1.23.0 non trouvé"
+        git checkout main || git checkout master || true
         git pull --ff-only || true
+        git submodule sync --recursive
         git submodule update --init --recursive
         success "Dépôt mis à jour"
         finish_task "Git Repo" done
@@ -106,12 +105,21 @@ build_onnxruntime(){
     mkdir -p "$BUILD_DIR"
     source "$VENV_DIR/bin/activate"
     info "Compilation $(basename $BUILD_DIR) [$BACKEND]..."
-    CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON \
+    -DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
     [ "$BACKEND" = "rocm" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_rocm"
     [ "$BACKEND" = "cuda" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_cuda"
-    ./build.sh --allow_running_as_root --build_dir "$BUILD_DIR" --config Release \
-        --build_wheel --update --build --parallel "$NPROC" --skip_tests \
-        --cmake_generator Ninja --cmake_extra_defines "$CMAKE_DEFINES"
+    ./build.sh \
+        --allow_running_as_root \
+        --build_dir "$BUILD_DIR" \
+        --config Release \
+        --build_wheel \
+        --update \
+        --build \
+        --parallel "$NPROC" \
+        --skip_tests \
+        --cmake_generator Ninja \
+        --cmake_extra_defines "$CMAKE_DEFINES"
     deactivate
     success "Build $(basename $BUILD_DIR) terminé"
     finish_task "Build $(basename $BUILD_DIR)" done
@@ -125,38 +133,41 @@ install_wheel(){
     if [ -f "$WHEEL" ]; then
         info "Installation de la wheel : $WHEEL"
         pip install --upgrade "$WHEEL"
-        success "ONNX Runtime installé dans $VENV_DIR"
+        mkdir -p "$WHEEL_BACKUP"
+        cp "$WHEEL" "$WHEEL_BACKUP/"
+        success "ONNX Runtime installé dans $VENV_DIR et wheel sauvegardée"
+        finish_task "Wheel $(basename $BUILD_DIR)" done
     else
         warn "Wheel non trouvée dans $BUILD_DIR"
+        finish_task "Wheel $(basename $BUILD_DIR)" fail
     fi
     deactivate
-    finish_task "Wheel $(basename $BUILD_DIR)" done
 }
 
 # ==================== Exécution ====================
-mkdir -p "$TMP_DIR"
+mkdir -p "$TMP_DIR" "$WHEEL_BACKUP"
+
 install_system_prereqs
 prepare_venv "$CPU_VENV"
 prepare_venv "$GPU_VENV"
 clone_or_update_repo
+
 cd "$REPO"
 rm -rf build_cpu build_gpu
 
 GPU_BACKEND=$(detect_gpu)
+
 # Build CPU
 build_onnxruntime "$CPU_VENV" "build_cpu" "cpu"
 
-# Build GPU si dispo
-[ "$GPU_BACKEND" != "cpu" ] && build_onnxruntime "$GPU_VENV" "build_gpu" "$GPU_BACKEND"
+# Build GPU si disponible
+if [ "$GPU_BACKEND" != "cpu" ]; then
+    build_onnxruntime "$GPU_VENV" "build_gpu" "$GPU_BACKEND"
+fi
 
-# Installation
+# Installation wheels
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
 [ "$GPU_BACKEND" != "cpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
-
-# Backup des wheels
-mkdir -p "$HOME/onnx_wheels_backup"
-cp -v "$REPO/build_cpu"/Release/dist/*.whl "$HOME/onnx_wheels_backup/" || true
-[ "$GPU_BACKEND" != "cpu" ] && cp -v "$REPO/build_gpu"/Release/dist/*.whl "$HOME/onnx_wheels_backup/" || true
 
 rm -rf "$TMP_DIR"
 show_checklist
