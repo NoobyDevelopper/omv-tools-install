@@ -88,11 +88,10 @@ clone_or_update_repo(){
 }
 
 detect_gpu(){
-    GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
-    if echo "$GPU_VENDOR" | grep -qi "amd"; then
-        echo "rocm"
-    elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
-        echo "cuda"
+    # Forcer MIGRAPHX si GPU AMD détecté
+    GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -i "amd" || true)
+    if [ -n "$GPU_VENDOR" ]; then
+        echo "gpu-migraphx"
     else
         echo "cpu"
     fi
@@ -105,10 +104,14 @@ build_onnxruntime(){
     mkdir -p "$BUILD_DIR"
     source "$VENV_DIR/bin/activate"
     info "Compilation $(basename $BUILD_DIR) [$BACKEND]..."
+
     CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON \
-    -DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-    [ "$BACKEND" = "rocm" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_rocm"
-    [ "$BACKEND" = "cuda" ] && CMAKE_DEFINES="$CMAKE_DEFINES --use_cuda"
+-DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+
+    if [ "$BACKEND" = "gpu-migraphx" ]; then
+        CMAKE_DEFINES="$CMAKE_DEFINES --use_migraphx"
+    fi
+
     ./build.sh \
         --allow_running_as_root \
         --build_dir "$BUILD_DIR" \
@@ -120,6 +123,7 @@ build_onnxruntime(){
         --skip_tests \
         --cmake_generator Ninja \
         --cmake_extra_defines "$CMAKE_DEFINES"
+
     deactivate
     success "Build $(basename $BUILD_DIR) terminé"
     finish_task "Build $(basename $BUILD_DIR)" done
@@ -144,6 +148,15 @@ install_wheel(){
     deactivate
 }
 
+verify_gpu_env(){
+    local VENV_DIR=$1
+    source "$VENV_DIR/bin/activate"
+    pip install --upgrade huggingface_hub onnx
+    python -c "import huggingface_hub; print('huggingface_hub OK')"
+    python -c "import onnxruntime as ort; print('Device:', ort.get_device())"
+    deactivate
+}
+
 # ==================== Exécution ====================
 mkdir -p "$TMP_DIR" "$WHEEL_BACKUP"
 
@@ -160,15 +173,18 @@ GPU_BACKEND=$(detect_gpu)
 # Build CPU
 build_onnxruntime "$CPU_VENV" "build_cpu" "cpu"
 
-# Build GPU si disponible
-if [ "$GPU_BACKEND" != "cpu" ]; then
+# Build GPU MIGRAPHX si AMD détecté
+if [ "$GPU_BACKEND" = "gpu-migraphx" ]; then
     build_onnxruntime "$GPU_VENV" "build_gpu" "$GPU_BACKEND"
 fi
 
 # Installation wheels
 install_wheel "$CPU_VENV" "$REPO/build_cpu"
-[ "$GPU_BACKEND" != "cpu" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
+[ "$GPU_BACKEND" = "gpu-migraphx" ] && install_wheel "$GPU_VENV" "$REPO/build_gpu"
+
+# Vérification environnement GPU
+[ "$GPU_BACKEND" = "gpu-migraphx" ] && verify_gpu_env "$GPU_VENV"
 
 rm -rf "$TMP_DIR"
 show_checklist
-success "ONNX Runtime CPU et GPU 1.23 prêts !"
+success "ONNX Runtime CPU et GPU-MIGRAPHX prêts !"
