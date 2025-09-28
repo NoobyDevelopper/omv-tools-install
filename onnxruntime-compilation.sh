@@ -88,7 +88,6 @@ clone_or_update_repo(){
 }
 
 detect_gpu(){
-    # Forcer MIGRAPHX si GPU AMD détecté
     GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -i "amd" || true)
     if [ -n "$GPU_VENDOR" ]; then
         echo "gpu-migraphx"
@@ -105,24 +104,23 @@ build_onnxruntime(){
     source "$VENV_DIR/bin/activate"
     info "Compilation $(basename $BUILD_DIR) [$BACKEND]..."
 
-    CMAKE_DEFINES="-Donnxruntime_DISABLE_WARNINGS=ON -DONNX_DISABLE_WARNINGS=ON \
--DCMAKE_CXX_FLAGS='-Wno-unused-parameter -Wunused-variable' -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-
-    if [ "$BACKEND" = "gpu-migraphx" ]; then
-        CMAKE_DEFINES="$CMAKE_DEFINES --use_migraphx"
-    fi
+    CMAKE_DEFINES="onnxruntime_DISABLE_WARNINGS=ON ONNX_DISABLE_WARNINGS=ON CMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    EXTRA_OPTS=""
+    [ "$BACKEND" = "gpu-migraphx" ] && EXTRA_OPTS="--use_migraphx"
 
     ./build.sh \
         --allow_running_as_root \
         --build_dir "$BUILD_DIR" \
         --config Release \
         --build_wheel \
+        --enable_pybind \
         --update \
         --build \
         --parallel "$NPROC" \
         --skip_tests \
         --cmake_generator Ninja \
-        --cmake_extra_defines "$CMAKE_DEFINES"
+        --cmake_extra_defines $CMAKE_DEFINES \
+        $EXTRA_OPTS
 
     deactivate
     success "Build $(basename $BUILD_DIR) terminé"
