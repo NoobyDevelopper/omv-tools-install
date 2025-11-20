@@ -13,8 +13,7 @@ NC='\033[0m' # No Color
 # ==================== Scripts ====================
 SCRIPT1="omv-config-base.sh"
 SCRIPT2="docker-ollama-base.sh"
-SCRIPT3="onnxruntime-compilation.sh"
-
+SCRIPT3="whisper-piper-home-assistant.sh"
 # ==================== Checklist dynamique ====================
 declare -A CHECKLIST
 mark_done() { CHECKLIST["$1"]="✅"; }
