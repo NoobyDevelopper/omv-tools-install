@@ -161,31 +161,57 @@ fi
 # --- GPU Detection + ROCm ---
 info "Détection GPU"
 GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
+
 if echo "$GPU_VENDOR" | grep -qi "amd"; then
     info "GPU AMD détecté"
-    DEB_FILE="$TMP_DIR/amdgpu-install_6.4.60403-1_all.deb"
-    DEB_URL="https://repo.radeon.com/amdgpu-install/6.4.3/ubuntu/jammy/amdgpu-install_6.4.60403-1_all.deb"
-    wget -q "$DEB_URL" -O "$DEB_FILE"
-    sudo apt install -y "$DEB_FILE"
-    sudo apt update -qq
-    sudo apt install -y python3-setuptools python3-wheel
-    sudo usermod -a -G render,video "$LOGNAME"
-    if sudo apt install -y rocm; then
-        success "Pilotes AMD + ROCm installés"
-        finish_task "GPU Drivers + ROCm" done
+
+    # Détection Debian 12/13 pour choisir noble/jammy
+    debian_version=$(grep -oP '(?<=VERSION_ID=")[0-9]+' /etc/os-release)
+
+    if [ "$debian_version" = "13" ]; then
+        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1/ubuntu/noble/amdgpu-install_7.1.70100-1_all.deb"
+    elif [ "$debian_version" = "12" ]; then
+        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1/ubuntu/jammy/amdgpu-install_7.1.70100-1_all.deb"
     else
+        error "Version Debian non supportée"
         finish_task "GPU Drivers + ROCm" fail
+        ROCM_URL=""
     fi
+
+    if [ -n "$ROCM_URL" ]; then
+        DEB_FILE="$TMP_DIR/$(basename "$ROCM_URL")"
+        info "Téléchargement ROCm : $ROCM_URL"
+
+        if wget -q "$ROCM_URL" -O "$DEB_FILE"; then
+            success "Paquet ROCm téléchargé"
+            sudo apt install -y "$DEB_FILE"
+            sudo apt update -qq
+            sudo usermod -a -G render,video "$LOGNAME"
+
+            if sudo apt install -y rocm; then
+                success "Pilotes AMD + ROCm installés"
+                finish_task "GPU Drivers + ROCm" done
+            else
+                finish_task "GPU Drivers + ROCm" fail
+            fi
+        else
+            error "Échec du téléchargement ROCm"
+            finish_task "GPU Drivers + ROCm" fail
+        fi
+    fi
+
 elif echo "$GPU_VENDOR" | grep -qi "nvidia"; then
     info "GPU NVIDIA détecté"
     sudo apt install -y -qq nvidia-driver nvidia-cuda-toolkit
     success "Pilotes NVIDIA + CUDA installés"
     finish_task "GPU Drivers + ROCm" done
+
 elif echo "$GPU_VENDOR" | grep -qi "intel"; then
     info "GPU Intel détecté"
     sudo apt install -y -qq intel-gpu-tools
     success "Pilotes Intel installés"
     finish_task "GPU Drivers + ROCm" done
+
 else
     warn "Aucun GPU pris en charge détecté"
     finish_task "GPU Drivers + ROCm" warn
@@ -210,45 +236,39 @@ else
     finish_task "OMV-Compose + Docker" fail
 fi
 
-# --- Nettoyage automatique ---
-info "Nettoyage des fichiers temporaires et caches"
+# --- Nettoyage ---
+info "Nettoyage"
 rm -rf "$TMP_DIR"
 sudo apt clean
 sudo apt autoremove -y
 success "Nettoyage terminé"
 finish_task "Nettoyage" done
 
-# --- Venv global ---
+# --- Venv ---
 VENV_DIR="$HOME/onnx_env"
-info "Vérification du venv global"
+info "Vérification venv"
 [ -d "$VENV_DIR" ] || python3 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip setuptools wheel numpy
 deactivate
-success "Venv global prêt"
+success "Venv prêt"
 finish_task "Venv" done
 
-# --- Wake-on-LAN automatique ---
-info "Activation du Wake-on-LAN sur l'interface réseau principale"
+# --- WOL ---
+info "Activation du Wake-on-LAN"
 MAIN_IFACE=$(ip route | awk '/default/ {print $5; exit}')
+
 if [ -n "$MAIN_IFACE" ]; then
-    info "Interface détectée : $MAIN_IFACE"
     if command -v ethtool &>/dev/null; then
-        WOL_STATUS=$(ethtool "$MAIN_IFACE" | awk '/Wake-on/ {print $2}')
-        if [ "$WOL_STATUS" != "g" ]; then
-            sudo ethtool -s "$MAIN_IFACE" wol g
-            success "WOL activé sur $MAIN_IFACE"
-            finish_task "Wake-on-LAN" done
-        else
-            success "WOL déjà activé sur $MAIN_IFACE"
-            finish_task "Wake-on-LAN" done
-        fi
+        sudo ethtool -s "$MAIN_IFACE" wol g
+        success "WOL activé sur $MAIN_IFACE"
+        finish_task "Wake-on-LAN" done
     else
-        warn "ethtool non trouvé, impossible d'activer WOL"
+        warn "ethtool non trouvé"
         finish_task "Wake-on-LAN" warn
     fi
 else
-    warn "Impossible de détecter l'interface principale"
+    warn "Interface non détectée"
     finish_task "Wake-on-LAN" fail
 fi
 
