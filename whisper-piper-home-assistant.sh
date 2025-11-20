@@ -76,7 +76,7 @@ docker compose -f $COMPOSE_FILE up -d
 # ----------------------------
 
 echo "⏳ Attente de Home Assistant (host network)..."
-HA_HOST="127.0.0.1"
+HA_HOST="0.0.0.0"
 until curl -sf "http://$HA_HOST:8123" >/dev/null 2>&1; do
     printf "."
     sleep 5
@@ -96,4 +96,5 @@ docker restart home-assistant
 
 echo "✅ Home Assistant prêt avec HACS installé !"
 echo "Accès Home Assistant : http://$HA_HOST:8123"
+
 
