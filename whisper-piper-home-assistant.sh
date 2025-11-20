@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+# ----------------------------
+# Vérifier et installer wget si nécessaire
+# ----------------------------
+if ! command -v wget >/dev/null 2>&1; then
+    echo "📦 wget non trouvé, installation..."
+    apt update
+    apt install wget -y
+fi
+
 echo "🚀 Création des dossiers pour Docker..."
 mkdir -p /docker/faster-whisper_DATA
 mkdir -p /docker/piper_DATA
@@ -9,10 +18,10 @@ mkdir -p /docker/home-assistant_CONFIG
 # ----------------------------
 # Création du docker-compose.yml
 # ----------------------------
-
 COMPOSE_FILE="/docker/docker-compose.yml"
 
-cat > $COMPOSE_FILE <<'EOF'
+cat > "$COMPOSE_FILE" <<'EOF'
+
 services:
   faster-whisper:
     image: linuxserver/faster-whisper:latest
@@ -24,7 +33,7 @@ services:
     volumes:
       - /opt/rocm:/opt/rocm
       - /docker/faster-whisper_DATA:/data
-          devices:
+    devices:
       - "/dev/dri:/dev/dri"
       - "/dev/kfd:/dev/kfd"
     ports:
@@ -67,26 +76,30 @@ EOF
 # ----------------------------
 # Lancer le stack Docker
 # ----------------------------
-
-docker compose -f $COMPOSE_FILE build
-docker compose -f $COMPOSE_FILE up -d
+docker compose -f "$COMPOSE_FILE" build
+docker compose -f "$COMPOSE_FILE" up -d
 
 # ----------------------------
-# Attendre que Home Assistant soit prêt sur l'hôte
+# Attendre que Home Assistant soit prêt
 # ----------------------------
+HA_HOST="127.0.0.1"
+TIMEOUT=300  # 5 minutes max
+SECONDS=0
 
 echo "⏳ Attente de Home Assistant (host network)..."
-HA_HOST="0.0.0.0"
-until curl -sf "http://$HA_HOST:8123" >/dev/null 2>&1; do
+until wget -qO- "http://$HA_HOST:8123" >/dev/null 2>&1; do
     printf "."
     sleep 5
+    if [ $SECONDS -ge $TIMEOUT ]; then
+        echo -e "\n❌ Timeout, Home Assistant n'a pas démarré."
+        exit 1
+    fi
 done
 echo -e "\n✅ Home Assistant est prêt !"
 
 # ----------------------------
 # Installer HACS
 # ----------------------------
-
 echo "📝 Installation de HACS dans Home Assistant..."
 docker exec -it home-assistant bash -c "wget -O - https://get.hacs.xyz | bash"
 
@@ -96,5 +109,3 @@ docker restart home-assistant
 
 echo "✅ Home Assistant prêt avec HACS installé !"
 echo "Accès Home Assistant : http://$HA_HOST:8123"
-
-
