@@ -24,7 +24,7 @@ services:
     volumes:
       - /opt/rocm:/opt/rocm
       - /docker/faster-whisper_DATA:/data
-    devices:
+          devices:
       - "/dev/dri:/dev/dri"
       - "/dev/kfd:/dev/kfd"
     ports:
@@ -96,3 +96,4 @@ docker restart home-assistant
 
 echo "✅ Home Assistant prêt avec HACS installé !"
 echo "Accès Home Assistant : http://$HA_HOST:8123"
+
