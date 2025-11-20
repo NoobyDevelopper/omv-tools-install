@@ -7,11 +7,9 @@
 set -e
 
 echo "🚀 Création des dossiers pour Docker..."
-
 mkdir -p /docker/faster-whisper_DATA
 mkdir -p /docker/piper_DATA
 mkdir -p /docker/home-assistant_CONFIG
-
 
 # ----------------------------
 # Créer le docker-compose.yml
@@ -75,7 +73,6 @@ services:
 networks:
   whispnet:
     driver: bridge
-
 EOF
 
 # ----------------------------
@@ -90,3 +87,16 @@ echo "✅ Stack complet lancé !"
 echo "Faster-Whisper : http://10.0.0.7:10300"
 echo "Piper : http://10.0.0.7:10200"
 echo "Home Assistant : http://10.0.0.7:8123"
+
+# ----------------------------
+# Installer HACS dans Home Assistant
+# ----------------------------
+
+echo "📝 Installation de HACS dans Home Assistant..."
+docker exec -it home-assistant bash -c "wget -O - https://get.hacs.xyz | bash"
+
+# Redémarrer le conteneur pour prendre en compte HACS
+echo "🔄 Redémarrage du conteneur Home Assistant..."
+docker restart home-assistant
+
+echo "✅ Home Assistant prêt avec HACS installé !"
