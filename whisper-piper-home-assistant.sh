@@ -1,9 +1,4 @@
 #!/bin/bash
-
-# ----------------------------
-# Script Tout-en-un Docker
-# ----------------------------
-
 set -e
 
 echo "🚀 Création des dossiers pour Docker..."
@@ -12,17 +7,13 @@ mkdir -p /docker/piper_DATA
 mkdir -p /docker/home-assistant_CONFIG
 
 # ----------------------------
-# Créer le docker-compose.yml
+# Création du docker-compose.yml
 # ----------------------------
 
 COMPOSE_FILE="/docker/docker-compose.yml"
 
-echo "📝 Création du docker-compose.yml..."
-
 cat > $COMPOSE_FILE <<'EOF'
 services:
-
-  # 🗣️ Faster-Whisper (STT)
   faster-whisper:
     image: linuxserver/faster-whisper:latest
     container_name: faster-whisper
@@ -41,7 +32,6 @@ services:
     networks:
       - whispnet
 
-  # 🗣️ Piper (TTS)
   piper:
     image: rhasspy/wyoming-piper:latest
     container_name: piper
@@ -59,7 +49,6 @@ services:
       - whispnet
     command: ["--voice", "fr_FR-siwis-medium", "--data-dir", "/opt/models"]
 
-  # 🏠 Home Assistant
   home-assistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: home-assistant
@@ -79,24 +68,31 @@ EOF
 # Lancer le stack Docker
 # ----------------------------
 
-echo "🚀 Lancement du stack Docker..."
 docker compose -f $COMPOSE_FILE build
 docker compose -f $COMPOSE_FILE up -d
 
-echo "✅ Stack complet lancé !"
-echo "Faster-Whisper : http://10.0.0.7:10300"
-echo "Piper : http://10.0.0.7:10200"
-echo "Home Assistant : http://10.0.0.7:8123"
+# ----------------------------
+# Attendre que Home Assistant soit prêt sur l'hôte
+# ----------------------------
+
+echo "⏳ Attente de Home Assistant (host network)..."
+HA_HOST="127.0.0.1"
+until curl -sf "http://$HA_HOST:8123" >/dev/null 2>&1; do
+    printf "."
+    sleep 5
+done
+echo -e "\n✅ Home Assistant est prêt !"
 
 # ----------------------------
-# Installer HACS dans Home Assistant
+# Installer HACS
 # ----------------------------
 
 echo "📝 Installation de HACS dans Home Assistant..."
 docker exec -it home-assistant bash -c "wget -O - https://get.hacs.xyz | bash"
 
-# Redémarrer le conteneur pour prendre en compte HACS
+# Redémarrage final
 echo "🔄 Redémarrage du conteneur Home Assistant..."
 docker restart home-assistant
 
 echo "✅ Home Assistant prêt avec HACS installé !"
+echo "Accès Home Assistant : http://$HA_HOST:8123"
