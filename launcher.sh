@@ -74,7 +74,7 @@ partie1_3() { partie1; partie3; }
 
 # ==================== Menu ====================
 echo -e "${YELLOW}#############################################${NC}"
-echo -e "${YELLOW}# Choisir une option (défaut Partie 1 dans 10s) #${NC}"
+echo -e "${YELLOW}# Choisir une option (défaut Partie 1 dans 20s) #${NC}"
 echo -e "${YELLOW}#############################################${NC}"
 echo "1) Partie 1  -> $SCRIPT1"
 echo "2) Partie 2  -> $SCRIPT2"
@@ -85,7 +85,7 @@ echo -e "${YELLOW}#############################################${NC}"
 
 # Timer 10s pour choix par défaut
 CHOIX=""
-for i in {10..1}; do
+for i in {20..1}; do
     printf "\rSélection automatique dans %2d secondes..." "$i"
     read -t 1 -n 1 input || true
     if [[ -n "$input" ]]; then
