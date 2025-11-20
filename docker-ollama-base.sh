@@ -39,7 +39,7 @@ fi
 read -rp "Entrez le chemin du volume Docker pour Ollama (ex: /srv/dev-disk-by-label-DATA/docker) : " DOCKER_DATA
 mkdir -p "$DOCKER_DATA/ollama"
 
-read -rp "Entrez l'adresse IP à utiliser pour Ollama (ex: 127.0.0.1) : " IP_ADDR
+read -rp "Entrez l'adresse IP à utiliser pour Ollama (votre NAS omv) (ex: 127.0.0.1) : " IP_ADDR
 IP_ADDR=${IP_ADDR:-"127.0.0.1"}  # valeur par défaut si rien n'est entré
 info "IP utilisée pour Ollama : $IP_ADDR"
 
