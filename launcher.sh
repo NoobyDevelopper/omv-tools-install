@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 SCRIPT1="omv-config-base.sh"
 SCRIPT2="docker-ollama-base.sh"
 SCRIPT3="whisper-piper-home-assistant.sh"
+
 # ==================== Checklist dynamique ====================
 declare -A CHECKLIST
 mark_done() { CHECKLIST["$1"]="✅"; }
@@ -27,9 +28,23 @@ show_checklist() {
     echo -e "${CYAN}==================================================${NC}\n"
 }
 
-# ==================== Vérification exécutable ====================
+# ==================== Installer dos2unix si nécessaire ====================
+if ! command -v dos2unix >/dev/null 2>&1; then
+    echo -e "${YELLOW}📦 dos2unix non trouvé, installation...${NC}"
+    apt update
+    apt install dos2unix -y
+fi
+
+# ==================== Vérification exécutable et conversion DOS->Unix ====================
 check_exec() {
     local script=$1
+    if [ ! -f "$script" ]; then
+        echo -e "${RED}Le script $script n'existe pas ❌${NC}"
+        mark_fail "$script"
+        return 1
+    fi
+    echo -e "${CYAN}🔄 Conversion DOS->Unix pour $script${NC}"
+    dos2unix "$script"
     if [ ! -x "$script" ]; then
         echo -e "${YELLOW}Rendre $script exécutable...${NC}"
         chmod +x "$script"
@@ -39,8 +54,8 @@ check_exec() {
 # ==================== Exécution d'un script ====================
 run_script() {
     local script=$1
+    check_exec "$script" || return
     echo -e "${CYAN}=== Exécution de $script ===${NC}"
-    check_exec "$script"
     if ./"$script"; then
         mark_done "$script"
         echo -e "${GREEN}$script terminé ✅${NC}\n"
@@ -68,9 +83,9 @@ echo "4) Partie 1+3 -> $SCRIPT1 + $SCRIPT3"
 echo "5) Partie 3  -> $SCRIPT3"
 echo -e "${YELLOW}#############################################${NC}"
 
-# Timer 20s pour choix par défaut
+# Timer 10s pour choix par défaut
 CHOIX=""
-for i in {20..1}; do
+for i in {10..1}; do
     printf "\rSélection automatique dans %2d secondes..." "$i"
     read -t 1 -n 1 input || true
     if [[ -n "$input" ]]; then
@@ -80,6 +95,9 @@ for i in {20..1}; do
 done
 printf "\n"
 CHOIX=${CHOIX:-1}
+
+# Confirmation simple
+read -p "Vous avez choisi l'option $CHOIX. Appuyez sur Entrée pour confirmer..." _
 
 # ==================== Execution selon choix ====================
 case $CHOIX in
