@@ -165,15 +165,14 @@ GPU_VENDOR=$(lspci | grep -E "VGA|3D" | grep -iE "amd|nvidia|intel" || true)
 if echo "$GPU_VENDOR" | grep -qi "amd"; then
     info "GPU AMD détecté"
 
-    # Détection Debian 12/13 pour choisir noble/jammy
     debian_version=$(grep -oP '(?<=VERSION_ID=")[0-9]+' /etc/os-release)
 
     if [ "$debian_version" = "13" ]; then
-        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1/ubuntu/noble/amdgpu-install_7.1.70100-1_all.deb"
+        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1.1/ubuntu/noble/amdgpu-install_7.1.1.70101-1_all.deb"
     elif [ "$debian_version" = "12" ]; then
-        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1/ubuntu/jammy/amdgpu-install_7.1.70100-1_all.deb"
+        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1.1/ubuntu/jammy/amdgpu-install_7.1.1.70101-1_all.deb"
     else
-        error "Version Debian non supportée"
+        error "Version Debian non supportée pour ROCm"
         finish_task "GPU Drivers + ROCm" fail
         ROCM_URL=""
     fi
@@ -184,14 +183,20 @@ if echo "$GPU_VENDOR" | grep -qi "amd"; then
 
         if wget -q "$ROCM_URL" -O "$DEB_FILE"; then
             success "Paquet ROCm téléchargé"
-            sudo apt install -y "$DEB_FILE"
-            sudo apt update -qq
-            sudo usermod -a -G render,video "$LOGNAME"
 
-            if sudo apt install -y rocm; then
-                success "Pilotes AMD + ROCm installés"
-                finish_task "GPU Drivers + ROCm" done
+            if sudo apt install -y "$DEB_FILE"; then
+                sudo apt update -qq
+                sudo apt install -y python3-setuptools python3-wheel
+                sudo usermod -a -G render,video "$LOGNAME"
+
+                if sudo apt install -y rocm; then
+                    success "Pilotes AMD + ROCm installés"
+                    finish_task "GPU Drivers + ROCm" done
+                else
+                    finish_task "GPU Drivers + ROCm" fail
+                fi
             else
+                error "Échec de l'installation du paquet amdgpu-install"
                 finish_task "GPU Drivers + ROCm" fail
             fi
         else
