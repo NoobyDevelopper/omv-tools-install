@@ -47,7 +47,6 @@ info "RAM allouée : ${RAM_CHOSEN} Go"
 COMPOSE_FILE="$DOCKER_DATA/docker-compose.yml"
 
 cat > "$COMPOSE_FILE" <<EOF
-version: "3.9"
 
 services:
   faster-whisper:
@@ -109,3 +108,4 @@ docker compose -f "$COMPOSE_FILE" up -d
 success "Conteneurs faster-whisper et piper lancés et optimisés pour ROCm !"
 info "Faster-Whisper HTTP API : http://localhost:10300"
 info "Piper HTTP API : http://localhost:10200"
+
