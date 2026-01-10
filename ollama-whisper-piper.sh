@@ -8,7 +8,7 @@ warn()    { echo "[WARN] $*"; }
 error()   { echo "[ERROR] $*" >&2; exit 1; }
 
 # ================= PRÉREQUIS =================
-info "Vérification Docker Compose"
+info "Vérification Docker Compose et OMV Compose"
 apt update -y
 for pkg in docker-compose-plugin openmediavault-compose; do
     if ! dpkg -l | grep -qw "$pkg"; then
@@ -18,18 +18,16 @@ done
 
 # ================= DEMANDE IP NAS =================
 while true; do
-    read -rp "IP de l'hôte NAS pour exposer les conteneurs (ex: 127.0.0.7) : " HOST_IP
-    # Vérifier format IPv4
+    read -rp "IP de l'hôte NAS pour exposer les conteneurs (ex: 10.0.0.7) : " HOST_IP
     if [[ $HOST_IP =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-        # Vérifier qu'elle est présente sur l'hôte
-        if ip addr | grep -q "$HOST_IP"; then
+        if ip -4 addr show | grep -qw "$HOST_IP"; then
             info "IP valide et disponible sur l'hôte : $HOST_IP"
             break
         else
-            warn "IP $HOST_IP non détectée sur cet hôte. Vérifie la configuration réseau."
+            warn "IP $HOST_IP non détectée sur cet hôte."
         fi
     else
-        warn "Format IP invalide. Exemple attendu : 127.0.0.1"
+        warn "Format IP invalide. Exemple attendu : 10.0.0.7"
     fi
 done
 
@@ -40,7 +38,6 @@ mkdir -p "$DOCKER_DATA/faster-whisper" "$DOCKER_DATA/piper" "$DOCKER_DATA/ollama
 # ================= DÉTECTION ROCm / VRAM =================
 ROCM_OK=0
 VRAM_TOTAL_GB=0
-
 if command -v rocm-smi >/dev/null 2>&1; then
     ROCM_OK=1
     info "ROCm détecté"
@@ -95,8 +92,8 @@ systemctl restart docker
 
 # ================= COMPOSE FILE =================
 COMPOSE_FILE="$DOCKER_DATA/docker-compose.yml"
-
 cat > "$COMPOSE_FILE" <<EOF
+
 services:
   faster-whisper:
     image: linuxserver/faster-whisper:latest
@@ -114,10 +111,6 @@ services:
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
-    deploy:
-      resources:
-        limits:
-          memory: ${RAM_CHOSEN}g
     tmpfs:
       - /tmp:size=512m
     ports:
@@ -135,42 +128,32 @@ services:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
     command: ["--voice", "fr_FR-siwis-medium", "--data-dir", "/opt/models"]
-    deploy:
-      resources:
-        limits:
-          memory: ${RAM_CHOSEN}g
     tmpfs:
       - /tmp:size=256m
     ports:
       - "${HOST_IP}:10200:10200"
-
-  ollama:
-    image: ollama/ollama:rocm
-    container_name: ollama
-    restart: unless-stopped
-    devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    deploy:
-      resources:
-        limits:
-          memory: ${RAM_CHOSEN}g
-    tmpfs:
-      - /tmp:size=512m
-    volumes:
-      - $DOCKER_DATA/ollama:/root/.ollama
-    ports:
-      - "${HOST_IP}:11434:11434"
 EOF
 
 # ================= LANCEMENT =================
-info "Construction et lancement des conteneurs (swap bloqué)..."
-docker compose -f "$COMPOSE_FILE" build
-docker compose -f "$COMPOSE_FILE" up -d --no-deps \
-  --memory ${RAM_CHOSEN}g \
-  --memory-swap ${RAM_CHOSEN}g
+info "Construction et lancement des conteneurs Whisper et Piper..."
+docker compose -f "$COMPOSE_FILE" build || true
+docker compose -f "$COMPOSE_FILE" up -d
 
-success "Conteneurs Whisper, Piper et Ollama lancés avec tmpfs et swap bloqué."
+info "Lancement Ollama avec RAM et swap bloqués..."
+docker rm -f ollama >/dev/null 2>&1 || true
+docker run -d \
+  --name ollama \
+  --restart unless-stopped \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --memory ${RAM_CHOSEN}g \
+  --memory-swap ${RAM_CHOSEN}g \
+  --tmpfs /tmp:rw,size=512m \
+  -v "$DOCKER_DATA/ollama:/root/.ollama" \
+  -p ${HOST_IP}:11434:11434 \
+  ollama/ollama:rocm
+
+success "Whisper, Piper et Ollama lancés avec tmpfs et swap bloqué."
 info "Whisper HTTP API : http://${HOST_IP}:10300"
 info "Piper HTTP API   : http://${HOST_IP}:10200"
 info "Ollama HTTP API  : http://${HOST_IP}:11434"
