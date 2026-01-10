@@ -136,36 +136,40 @@ services:
     networks:
       - whispnet
 
+  ollama:
+    image: ollama/ollama:rocm
+    container_name: ollama
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    deploy:
+      resources:
+        limits:
+          memory: ${RAM_CHOSEN}g
+    tmpfs:
+      - /tmp:size=512m
+    volumes:
+      - $DOCKER_DATA/ollama:/root/.ollama
+    ports:
+      - "${IP_ADDR}:11434:11434"
+    networks:
+      - whispnet
+
 networks:
   whispnet:
     driver: bridge
 EOF
 
-# ================= LANCEMENT Whisper/Piper =================
-info "Construction et lancement de Whisper + Piper (swap bloqué)..."
+# ================= LANCEMENT =================
+info "Construction et lancement des conteneurs (swap bloqué)..."
 docker compose -f "$COMPOSE_FILE" build
 docker compose -f "$COMPOSE_FILE" up -d --no-deps \
   --memory ${RAM_CHOSEN}g \
   --memory-swap ${RAM_CHOSEN}g
 
-success "Whisper et Piper lancés avec tmpfs et swap bloqué."
-info "Faster-Whisper HTTP API : http://localhost:10300"
-info "Piper HTTP API : http://localhost:10200"
-
-# ================= DÉPLOIEMENT OLLAMA =================
-docker rm -f ollama >/dev/null 2>&1 || true
-info "Lancement Ollama (VRAM ${VRAM_CHOSEN} Go, RAM ${RAM_CHOSEN} Go, swap bloqué)..."
-
-docker run -d \
-  --name ollama \
-  --restart unless-stopped \
-  --device /dev/kfd \
-  --device /dev/dri \
-  --group-add video \
-  --memory ${RAM_CHOSEN}g \
-  --memory-swap ${RAM_CHOSEN}g \
-  -v "$DOCKER_DATA/ollama:/root/.ollama" \
-  -p ${IP_ADDR}:11434:11434 \
-  ollama/ollama:rocm
-
-success "Ollama opérationnel avec VRAM/RAM allouées, swap bloqué et TBW protégé."
+success "Conteneurs Whisper, Piper et Ollama lancés avec tmpfs et swap bloqué."
+info "Whisper HTTP API : http://localhost:10300"
+info "Piper HTTP API   : http://localhost:10200"
+info "Ollama HTTP API  : http://${IP_ADDR}:11434"
+info "Swap bloqué et TBW SSD/HDD protégé."
