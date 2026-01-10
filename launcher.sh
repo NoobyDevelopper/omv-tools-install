@@ -15,6 +15,7 @@ SCRIPTS=(
     "omv-config-base.sh"
     "docker-ollama-base.sh"
     "ollama-whisper-piper.sh"
+    "ollama-whisper-medium-piper.sh"
 )
 
 # ==================== Checklist dynamique ====================
