@@ -11,9 +11,11 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # ==================== Scripts ====================
-SCRIPT1="omv-config-base.sh"
-SCRIPT2="docker-ollama-base.sh"
-SCRIPT3="whisper-piper-home-assistant.sh"
+SCRIPTS=(
+    "omv-config-base.sh"
+    "docker-ollama-base.sh"
+    "whisper-piper.sh"
+)
 
 # ==================== Checklist dynamique ====================
 declare -A CHECKLIST
@@ -35,7 +37,7 @@ if ! command -v dos2unix >/dev/null 2>&1; then
     apt install dos2unix -y
 fi
 
-# ==================== Vérification exécutable et conversion DOS->Unix ====================
+# ==================== Vérification et exécution des scripts ====================
 check_exec() {
     local script=$1
     if [ ! -f "$script" ]; then
@@ -51,7 +53,6 @@ check_exec() {
     fi
 }
 
-# ==================== Exécution d'un script ====================
 run_script() {
     local script=$1
     check_exec "$script" || return
@@ -65,25 +66,35 @@ run_script() {
     fi
 }
 
-# ==================== Fonctions parties ====================
-partie1() { run_script "$SCRIPT1"; }
-partie2() { run_script "$SCRIPT2"; }
-partie3() { run_script "$SCRIPT3"; }
-partie1_2() { partie1; partie2; }
-partie1_3() { partie1; partie3; }
+# ==================== Fonctions dynamiques par "partie" ====================
+# Génère automatiquement les fonctions partieX
+declare -A PARTIES
+
+for i in "${!SCRIPTS[@]}"; do
+    part_name=$((i+1))
+    PARTIES[$part_name]="${SCRIPTS[i]}"
+done
+
+execute_partie() {
+    local choix_list=("$@")
+    for choix in "${choix_list[@]}"; do
+        local script=${PARTIES[$choix]}
+        [ -n "$script" ] && run_script "$script"
+    done
+}
 
 # ==================== Menu ====================
 echo -e "${YELLOW}#############################################${NC}"
 echo -e "${YELLOW}# Choisir une option (défaut Partie 1 dans 20s) #${NC}"
 echo -e "${YELLOW}#############################################${NC}"
-echo "1) Partie 1  -> $SCRIPT1"
-echo "2) Partie 2  -> $SCRIPT2"
-echo "3) Partie 1+2 -> $SCRIPT1 + $SCRIPT2"
-echo "4) Partie 1+3 -> $SCRIPT1 + $SCRIPT3"
-echo "5) Partie 3  -> $SCRIPT3"
+echo "1) Partie 1  -> ${SCRIPTS[0]}"
+echo "2) Partie 2  -> ${SCRIPTS[1]}"
+echo "3) Partie 1+2 -> ${SCRIPTS[0]} + ${SCRIPTS[1]}"
+echo "4) Partie 1+3 -> ${SCRIPTS[0]} + ${SCRIPTS[2]}"
+echo "5) Partie 3  -> ${SCRIPTS[2]}"
 echo -e "${YELLOW}#############################################${NC}"
 
-# Timer 10s pour choix par défaut
+# Timer 20s pour choix par défaut
 CHOIX=""
 for i in {20..1}; do
     printf "\rSélection automatique dans %2d secondes..." "$i"
@@ -96,17 +107,16 @@ done
 printf "\n"
 CHOIX=${CHOIX:-1}
 
-# Confirmation simple
 read -p "Vous avez choisi l'option $CHOIX. Appuyez sur Entrée pour confirmer..." _
 
-# ==================== Execution selon choix ====================
+# ==================== Exécution selon choix ====================
 case $CHOIX in
-    1) partie1 ;;
-    2) partie2 ;;
-    3) partie1_2 ;;
-    4) partie1_3 ;;
-    5) partie3 ;;
-    *) echo -e "${RED}Option invalide, exécution Partie 1 par défaut${NC}"; partie1 ;;
+    1) execute_partie 1 ;;
+    2) execute_partie 2 ;;
+    3) execute_partie 1 2 ;;
+    4) execute_partie 1 3 ;;
+    5) execute_partie 3 ;;
+    *) echo -e "${RED}Option invalide, exécution Partie 1 par défaut${NC}"; execute_partie 1 ;;
 esac
 
 # ==================== Affichage checklist finale ====================
