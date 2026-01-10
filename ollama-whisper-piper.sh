@@ -16,12 +16,26 @@ for pkg in docker-compose-plugin openmediavault-compose; do
     fi
 done
 
+# ================= DEMANDE IP NAS =================
+while true; do
+    read -rp "IP de l'hôte NAS pour exposer les conteneurs (ex: 127.0.0.7) : " HOST_IP
+    # Vérifier format IPv4
+    if [[ $HOST_IP =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        # Vérifier qu'elle est présente sur l'hôte
+        if ip addr | grep -q "$HOST_IP"; then
+            info "IP valide et disponible sur l'hôte : $HOST_IP"
+            break
+        else
+            warn "IP $HOST_IP non détectée sur cet hôte. Vérifie la configuration réseau."
+        fi
+    else
+        warn "Format IP invalide. Exemple attendu : 127.0.0.1"
+    fi
+done
+
 # ================= CHEMINS =================
 read -rp "Chemin des données Docker (ex: /srv/dev-disk-by-label-DATA/docker) : " DOCKER_DATA
 mkdir -p "$DOCKER_DATA/faster-whisper" "$DOCKER_DATA/piper" "$DOCKER_DATA/ollama"
-
-read -rp "IP d'écoute Ollama [127.0.0.1] : " IP_ADDR
-IP_ADDR=${IP_ADDR:-127.0.0.1}
 
 # ================= DÉTECTION ROCm / VRAM =================
 ROCM_OK=0
@@ -83,8 +97,6 @@ systemctl restart docker
 COMPOSE_FILE="$DOCKER_DATA/docker-compose.yml"
 
 cat > "$COMPOSE_FILE" <<EOF
-version: "3.9"
-
 services:
   faster-whisper:
     image: linuxserver/faster-whisper:latest
@@ -109,9 +121,7 @@ services:
     tmpfs:
       - /tmp:size=512m
     ports:
-      - "10300:10300"
-    networks:
-      - whispnet
+      - "${HOST_IP}:10300:10300"
 
   piper:
     image: rhasspy/wyoming-piper:latest
@@ -132,9 +142,7 @@ services:
     tmpfs:
       - /tmp:size=256m
     ports:
-      - "10200:10200"
-    networks:
-      - whispnet
+      - "${HOST_IP}:10200:10200"
 
   ollama:
     image: ollama/ollama:rocm
@@ -152,13 +160,7 @@ services:
     volumes:
       - $DOCKER_DATA/ollama:/root/.ollama
     ports:
-      - "${IP_ADDR}:11434:11434"
-    networks:
-      - whispnet
-
-networks:
-  whispnet:
-    driver: bridge
+      - "${HOST_IP}:11434:11434"
 EOF
 
 # ================= LANCEMENT =================
@@ -169,7 +171,7 @@ docker compose -f "$COMPOSE_FILE" up -d --no-deps \
   --memory-swap ${RAM_CHOSEN}g
 
 success "Conteneurs Whisper, Piper et Ollama lancés avec tmpfs et swap bloqué."
-info "Whisper HTTP API : http://localhost:10300"
-info "Piper HTTP API   : http://localhost:10200"
-info "Ollama HTTP API  : http://${IP_ADDR}:11434"
+info "Whisper HTTP API : http://${HOST_IP}:10300"
+info "Piper HTTP API   : http://${HOST_IP}:10200"
+info "Ollama HTTP API  : http://${HOST_IP}:11434"
 info "Swap bloqué et TBW SSD/HDD protégé."
