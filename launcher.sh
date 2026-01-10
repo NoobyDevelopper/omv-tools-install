@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 SCRIPTS=(
     "omv-config-base.sh"
     "docker-ollama-base.sh"
-    "whisper-piper.sh"
+    "ollama-whisper-piper.sh"
 )
 
 # ==================== Checklist dynamique ====================
