@@ -168,9 +168,9 @@ if echo "$GPU_VENDOR" | grep -qi "amd"; then
     debian_version=$(grep -oP '(?<=VERSION_ID=")[0-9]+' /etc/os-release)
 
     if [ "$debian_version" = "13" ]; then
-        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1.1/ubuntu/noble/amdgpu-install_7.1.1.70101-1_all.deb"
+        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/noble/amdgpu-install_7.2.3.70203-1_all.deb"
     elif [ "$debian_version" = "12" ]; then
-        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.1.1/ubuntu/jammy/amdgpu-install_7.1.1.70101-1_all.deb"
+        ROCM_URL="https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/jammy/amdgpu-install_7.2.3.70203-1_all.deb"
     else
         error "Version Debian non supportée pour ROCm"
         finish_task "GPU Drivers + ROCm" fail
