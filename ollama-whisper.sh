@@ -26,9 +26,17 @@ sysctl --system >/dev/null || true
 
 success "Swap désactivé (TBW protégé)"
 
+# ================= GPU GROUP AUTO =================
+info "Détection groupes GPU"
+
+VIDEO_GID=$(getent group video | cut -d: -f3)
+RENDER_GID=$(getent group render | cut -d: -f3)
+
+success "video=$VIDEO_GID | render=$RENDER_GID"
+
 # ================= INPUT =================
-read -rp "IP du serveur Docker : " HOST_IP
-read -rp "Dossier Docker_DATA : " DOCKER_DATA
+read -rp "IP Docker host : " HOST_IP
+read -rp "Docker DATA path : " DOCKER_DATA
 
 mkdir -p \
   "$DOCKER_DATA/whisper-rocm" \
@@ -44,46 +52,39 @@ COMPOSE_FILE="$DOCKER_DATA/docker-compose.yml"
 cat > "$COMPOSE_FILE" <<EOF
 services:
 
-  # ================= WHISPER ROCm (PRIORITÉ VOIX) =================
-  whisper-rocm:
-    image: beecave/insanely-fast-whisper-rocm:main
-    container_name: whisper-rocm
+  # ================= WHISPER WYOMING ROCm =================
+  wyoming-whisper:
+    image: pigeekcom/wyoming-faster-whisper-rocm:rocm7.0-strix
+    container_name: wyoming-whisper
     restart: unless-stopped
 
-    ipc: host
-    shm_size: "8G"
-
-    environment:
-      - TZ=Europe/Paris
-      - HSA_OVERRIDE_GFX_VERSION=11.0.0
-      - HIP_VISIBLE_DEVICES=0
-      - WHISPER_MODEL=openai/whisper-medium
+    ports:
+      - "${HOST_IP}:10300:10300"
 
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
 
     group_add:
-      - video
-      - render
+      - "${VIDEO_GID}"
+      - "${RENDER_GID}"
+
+    environment:
+      - WYOMING_MODEL=medium
+      - WYOMING_COMPUTE_TYPE=int8
+      - NUM_THREADS=6
+      - TZ=Europe/Paris
 
     volumes:
-      - $DOCKER_DATA/whisper-rocm:/app/models
+      - $DOCKER_DATA/whisper-rocm:/data
 
     tmpfs:
       - /tmp:size=512m
-      - /var/tmp:size=256m
 
-    deploy:
-      resources:
-        limits:
-          memory: ${RAM_WHISPER}g
-
-    ports:
-      - "${HOST_IP}:10300:8000"
+    ipc: host
 
 
-  # ================= OLLAMA ROCm (LLM GPU) =================
+  # ================= OLLAMA ROCm =================
   ollama:
     image: ollama/ollama:rocm
     container_name: ollama
@@ -91,7 +92,7 @@ services:
 
     environment:
       - OLLAMA_NUM_THREADS=4
-      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - HIP_VISIBLE_DEVICES=0
 
     devices:
       - /dev/kfd:/dev/kfd
@@ -114,16 +115,16 @@ services:
 
 EOF
 
-# ================= LANCEMENT =================
-info "Démarrage stack Whisper ROCm + Ollama ROCm..."
+# ================= START =================
+info "Démarrage stack voix + IA ROCm..."
 docker compose -f "$COMPOSE_FILE" up -d
 
-success "Stack ROCm prête"
+success "Stack prête"
 
 # ================= INFOS =================
-info "Whisper ROCm API : http://${HOST_IP}:10300"
-info "Ollama API       : http://${HOST_IP}:11434"
+info "Whisper WYOMING : http://${HOST_IP}:10300"
+info "Ollama API      : http://${HOST_IP}:11434"
 
-warn "Architecture active : Whisper ROCm GPU + Ollama ROCm GPU"
-warn "VRAM RX 7600 XT partagée dynamiquement entre Whisper et Ollama"
-warn "Swap désactivé + tmpfs actif → latence minimale + TBW protégé"
+warn "RX 7600 XT ROCm actif"
+warn "NUM_THREADS=6 Whisper optimisé voix"
+warn "HAOS sur autre machine → architecture propre"
