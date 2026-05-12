@@ -5,7 +5,6 @@ set -euo pipefail
 info()    { echo "[INFO] $*"; }
 success() { echo "[SUCCESS] $*"; }
 warn()    { echo "[WARN] $*"; }
-error()   { echo "[ERROR] $*" >&2; exit 1; }
 
 # ================= PRÉREQUIS =================
 info "Installation Docker Compose"
@@ -28,21 +27,22 @@ sysctl --system >/dev/null || true
 success "Swap désactivé (TBW protégé)"
 
 # ================= INPUT =================
-read -rp "IP hôte : " HOST_IP
+read -rp "IP hôte PC1 (Docker) : " HOST_IP
 read -rp "Dossier Docker : " DOCKER_DATA
 
 mkdir -p "$DOCKER_DATA/faster-whisper" "$DOCKER_DATA/ollama"
 
 # ================= RAM =================
-RAM_OLLAMA=10
 RAM_WHISPER=6
+RAM_OLLAMA=10
 
-# ================= DOCKER =================
+# ================= COMPOSE =================
 COMPOSE_FILE="$DOCKER_DATA/docker-compose.yml"
 
 cat > "$COMPOSE_FILE" <<EOF
 services:
 
+  # ================= WHISPER (PRIORITÉ VOIX) =================
   faster-whisper:
     image: linuxserver/faster-whisper:latest
     container_name: faster-whisper
@@ -76,6 +76,7 @@ services:
       - "${HOST_IP}:10300:10300"
 
 
+  # ================= OLLAMA (LLM GPU SECONDAIRE) =================
   ollama:
     image: ollama/ollama:rocm
     container_name: ollama
@@ -103,15 +104,18 @@ services:
 
     ports:
       - "${HOST_IP}:11434:11434"
+
 EOF
 
 # ================= LANCEMENT =================
-info "Démarrage stack voix + IA..."
+info "Démarrage stack VOIX + IA ROCm..."
 docker compose -f "$COMPOSE_FILE" up -d
 
-success "Stack prête (Whisper GPU prioritaire + Ollama ROCm)"
+success "Stack prête"
 
-info "Whisper : http://${HOST_IP}:10300"
-info "Ollama  : http://${HOST_IP}:11434"
+# ================= INFOS =================
+info "Whisper API : http://${HOST_IP}:10300"
+info "Ollama API  : http://${HOST_IP}:11434"
 
-warn "GPU partagé ROCm → arbitrage dynamique (pas de partition fixe VRAM)"
+warn "Architecture active : VOIX prioritaire (Whisper GPU) + LLM secondaire (Ollama ROCm)"
+warn "Swap désactivé + tmpfs actif → latence disque minimale + TBW protégé"
