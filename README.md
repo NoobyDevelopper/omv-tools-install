@@ -1,73 +1,87 @@
+🧠 OMV Tools Install – Voice AI Stack (OMV 8 + ROCm 7.2.3)
 
-POUR OMV 7.4.17 intel/NVIDIA/AMDGPU tester RADEON RX 7600XT
-
-        sudo apt update && sudo apt install -y wget unzip && \
-        rm -rf omv-tools-install && \
-        wget -O repo.zip https://github.com/NoobyDevelopper/omv-tools-install/archive/refs/heads/main.zip && \
-        unzip repo.zip && rm repo.zip && mv omv-tools-install-main omv-tools-install && \
-        cd omv-tools-install && chmod +x launcher.sh && sudo ./launcher.sh
+## ⚡ Installation rapide (OMV 8 / RX 7600 XT / ROCm)
 
 
-recuper le launcher.sh
+`` sudo apt update && sudo apt install -y wget unzip && \
+rm -rf omv-tools-install && \
+wget -O repo.zip https://github.com/NoobyDevelopper/omv-tools-install/archive/refs/heads/main.zip && \
+unzip repo.zip && rm repo.zip && mv omv-tools-install-main omv-tools-install && \
+cd omv-tools-install && chmod +x launcher.sh && sudo ./launcher.sh ``
 
-pas dev fait par chatgpt je decline toute responsabilite
+⚠️ DISCLAIMER
 
-la sauvegarde est une vertue qui faut grandement aimé.
+❗ Script non officiel (homelab uniquement)
+❗ Aucune garantie
+❗ Utilisation à vos risques
 
-OMV Config Base - Script
-        
-Automatisation complète de la configuration de base pour OpenMediaVault avec support GPU et Python.
-        
-Fonctionnalités clés :
-# Checklist d'installation OMV et configuration GPU/venv
+👉 Sauvegarde obligatoire avant exécution.
 
-- [ ] **Mise à jour système**  
-  - `apt update` et `apt upgrade`  
-  - Vérification des paquets à jour
+🧩 OMV 8 – Fonctionnalités
+🧱 Système
+Update & upgrade automatique
+Nettoyage système
+Optimisation base OMV
+🔥 GPU Auto Setup (ROCm 7.2.3)
+AMD (RX 7600 XT / gfx1102)
+ROCm 7.2.3 installation (latest)
+Support gfx1102
+Activation /dev/kfd + /dev/dri
+NVIDIA
+CUDA fallback auto
+Intel
+Mode CPU fallback
+Groupes GPU
+render
+video
+🐳 Docker / Compose
+openmediavault-compose
+Docker engine intégré
+Support stacks IA (Whisper / Ollama / Home Assistant)
+🐍 Python stack
+python3-venv
+pip / setuptools / wheel
+numpy base
+~/onnx_env
+🖥️ KVM
+openmediavault-kvm
+virtualisation locale
+🌐 Wake-on-LAN
+détection interface automatique
+activation via ethtool
+démarrage réseau optimisé
+🧠 Voice AI Stack (intégré)
+🎤 Whisper ROCm (STT)
+transcription locale GPU AMD
+faible latence voix
+compatible Home Assistant (WYOMING)
+🤖 Ollama ROCm (LLM)
+inference GPU AMD
+modèles ministral / llama
+optimisé RX 7600 XT
+⚡ Performance estimée
+🎤 Whisper
+small : 300–600 ms
+medium : 600 ms – 1.2 s
+large-v3 : 1.5 – 3 s
+🤖 Ollama
+15–30 tokens/sec GPU
+0.5 – 3 s réponse
+🔐 Sécurité & stabilité
+swap OFF (TBW SSD protection)
+tmpfs RAM cache (réduction I/O disque)
+isolation GPU containers
+ROCm 7.2.3 stable runtime
+🧠 Architecture globale
+Micro → HAOS (Wake Word)
+      → Whisper ROCm (OMV 8)
+      → Ollama ROCm (OMV 8)
+      → réponse vocale / action domotique
+🚀 Résultat final
 
-- [ ] **Firmware AMD**  
-  - Vérification si `firmware-amd-graphics` installé  
-  - Installation si absent
+Stack prête pour :
 
-- [ ] **wget**  
-  - Vérification de la présence de `wget`  
-  - Installation si nécessaire
-
-- [ ] **OMV-Extras**  
-  - Téléchargement et installation du script OMV-Extras
-
-- [ ] **Extensions OMV**  
-  - `openmediavault-clamav`, `openmediavault-cterm`, `openmediavault-diskstats`, etc.  
-
-- [ ] **Python utils**  
-  - `python3-venv`, `python3-pip`, `python3-setuptools`, `python3-wheel`
-
-- [ ] **Git**  
-  - Vérification de Git  
-  - Installation si absent
-
-- [ ] **GPU Drivers + ROCm / CUDA / Intel**  
-  - Détection GPU : AMD → ROCm, NVIDIA → CUDA, Intel → drivers Intel  
-  - Installation des pilotes  
-  - Ajout utilisateur aux groupes `render` et `video`
-
-- [ ] **Groupes utilisateur**  
-  - Ajouter l’utilisateur courant aux groupes `render` et `video`
-
-- [ ] **OMV-KVM**  
-  - Installation de `openmediavault-kvm`
-
-- [ ] **OMV-Compose + Docker**  
-  - Installation de `openmediavault-compose` (Docker inclus)
-
-- [ ] **Nettoyage automatique**  
-  - Suppression des fichiers temporaires et caches  
-  - `apt clean` et `apt autoremove`
-
-- [ ] **Venv global**  
-  - Création du venv global `~/onnx_env`  
-  - Installation de pip, setuptools, wheel, numpy
-
-- [ ] **Wake-on-LAN automatique**  
-  - Détection de l’interface principale  
-  - Activation WOL avec `ethtool` si disponible
+🎤 Assistant vocal local ultra réactif
+🧠 IA locale GPU AMD (RX 7600 XT)
+🏠 Domotique Home Assistant fluide
+🧱 OMV 8 homelab production stable
