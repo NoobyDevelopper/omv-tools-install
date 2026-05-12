@@ -27,8 +27,8 @@ sysctl --system >/dev/null || true
 success "Swap désactivé (TBW protégé)"
 
 # ================= INPUT =================
-read -rp "IP hôte PC1 (Docker) : " HOST_IP
-read -rp "Dossier Docker : " DOCKER_DATA
+read -rp "IP du server (Docker) : " HOST_IP
+read -rp "Dossier Docker_DATA : " DOCKER_DATA
 
 mkdir -p "$DOCKER_DATA/faster-whisper" "$DOCKER_DATA/ollama"
 
