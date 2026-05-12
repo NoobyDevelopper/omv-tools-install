@@ -27,10 +27,12 @@ sysctl --system >/dev/null || true
 success "Swap désactivé (TBW protégé)"
 
 # ================= INPUT =================
-read -rp "IP du server (Docker) : " HOST_IP
+read -rp "IP du serveur Docker : " HOST_IP
 read -rp "Dossier Docker_DATA : " DOCKER_DATA
 
-mkdir -p "$DOCKER_DATA/faster-whisper" "$DOCKER_DATA/ollama"
+mkdir -p \
+  "$DOCKER_DATA/whisper-rocm" \
+  "$DOCKER_DATA/ollama"
 
 # ================= RAM =================
 RAM_WHISPER=6
@@ -42,25 +44,31 @@ COMPOSE_FILE="$DOCKER_DATA/docker-compose.yml"
 cat > "$COMPOSE_FILE" <<EOF
 services:
 
-  # ================= WHISPER (PRIORITÉ VOIX) =================
-  faster-whisper:
-    image: linuxserver/faster-whisper:latest
-    container_name: faster-whisper
+  # ================= WHISPER ROCm (PRIORITÉ VOIX) =================
+  whisper-rocm:
+    image: beecave/insanely-fast-whisper-rocm:main
+    container_name: whisper-rocm
     restart: unless-stopped
 
+    ipc: host
+    shm_size: "8G"
+
     environment:
-      - WHISPER_MODEL=large-v3
-      - WHISPER_DEVICE=cpu
-      - WHISPER_COMPILE=1
-      - NUM_THREADS=6
-      
-    volumes:
-      - /opt/rocm:/opt/rocm
-      - $DOCKER_DATA/faster-whisper:/data
+      - TZ=Europe/Paris
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - HIP_VISIBLE_DEVICES=0
+      - WHISPER_MODEL=openai/whisper-medium
 
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
+
+    group_add:
+      - video
+      - render
+
+    volumes:
+      - $DOCKER_DATA/whisper-rocm:/app/models
 
     tmpfs:
       - /tmp:size=512m
@@ -72,10 +80,10 @@ services:
           memory: ${RAM_WHISPER}g
 
     ports:
-      - "${HOST_IP}:10300:10300"
+      - "${HOST_IP}:10300:8000"
 
 
-  # ================= OLLAMA (LLM GPU SECONDAIRE) =================
+  # ================= OLLAMA ROCm (LLM GPU) =================
   ollama:
     image: ollama/ollama:rocm
     container_name: ollama
@@ -85,12 +93,12 @@ services:
       - OLLAMA_NUM_THREADS=4
       - HSA_OVERRIDE_GFX_VERSION=11.0.0
 
-    volumes:
-      - $DOCKER_DATA/ollama:/root/.ollama
-
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
+
+    volumes:
+      - $DOCKER_DATA/ollama:/root/.ollama
 
     tmpfs:
       - /tmp:size=512m
@@ -107,14 +115,15 @@ services:
 EOF
 
 # ================= LANCEMENT =================
-info "Démarrage stack VOIX + IA ROCm..."
+info "Démarrage stack Whisper ROCm + Ollama ROCm..."
 docker compose -f "$COMPOSE_FILE" up -d
 
-success "Stack prête"
+success "Stack ROCm prête"
 
 # ================= INFOS =================
-info "Whisper API : http://${HOST_IP}:10300"
-info "Ollama API  : http://${HOST_IP}:11434"
+info "Whisper ROCm API : http://${HOST_IP}:10300"
+info "Ollama API       : http://${HOST_IP}:11434"
 
-warn "Architecture active : VOIX prioritaire (Whisper GPU) + LLM secondaire (Ollama ROCm)"
-warn "Swap désactivé + tmpfs actif → latence disque minimale + TBW protégé"
+warn "Architecture active : Whisper ROCm GPU + Ollama ROCm GPU"
+warn "VRAM RX 7600 XT partagée dynamiquement entre Whisper et Ollama"
+warn "Swap désactivé + tmpfs actif → latence minimale + TBW protégé"
