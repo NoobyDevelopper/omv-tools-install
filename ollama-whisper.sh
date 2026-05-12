@@ -8,60 +8,36 @@ warn()    { echo "[WARN] $*"; }
 error()   { echo "[ERROR] $*" >&2; exit 1; }
 
 # ================= PRÉREQUIS =================
-info "Vérification Docker Compose"
+info "Installation Docker Compose"
 apt update -y
-for pkg in docker-compose-plugin; do
-    if ! dpkg -l | grep -qw "$pkg"; then
-        apt install -y "$pkg"
-    fi
-done
+apt install -y docker-compose-plugin
 
 # ================= SWAP BLOQUÉ (TBW PROTECT) =================
-info "Désactivation swap pour protection SSD/HDD (TBW)"
+info "Désactivation swap (protection SSD/HDD)"
 
 swapoff -a || true
+sed -i.bak '/ swap / s/^/#/' /etc/fstab || true
 
-if grep -q " swap " /etc/fstab; then
-    sed -i.bak '/ swap / s/^/#/' /etc/fstab
-fi
-
-sysctl -w vm.swappiness=0 || true
-
-cat >/etc/sysctl.d/99-no-swap.conf <<EOF
+cat >/etc/sysctl.d/99-voice-stack.conf <<EOF
 vm.swappiness=0
 vm.vfs_cache_pressure=50
 EOF
 
 sysctl --system >/dev/null || true
 
-success "Swap désactivé → TBW SSD/HDD protégé"
+success "Swap désactivé (TBW protégé)"
 
-# ================= DEMANDE IP NAS =================
-read -rp "IP de l'hôte NAS (ex: 10.0.0.7) : " HOST_IP
+# ================= INPUT =================
+read -rp "IP hôte : " HOST_IP
+read -rp "Dossier Docker : " DOCKER_DATA
 
-# ================= CHEMINS =================
-read -rp "Chemin données Docker : " DOCKER_DATA
 mkdir -p "$DOCKER_DATA/faster-whisper" "$DOCKER_DATA/ollama"
 
 # ================= RAM =================
-TOTAL_RAM_GB=$(free -g | awk '/^Mem:/ {print $2}')
 RAM_OLLAMA=10
 RAM_WHISPER=6
 
-# ================= DOCKER LOG =================
-mkdir -p /etc/docker
-cat >/etc/docker/daemon.json <<EOF
-{
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "5m",
-    "max-file": "1"
-  }
-}
-EOF
-systemctl restart docker
-
-# ================= COMPOSE =================
+# ================= DOCKER =================
 COMPOSE_FILE="$DOCKER_DATA/docker-compose.yml"
 
 cat > "$COMPOSE_FILE" <<EOF
@@ -109,12 +85,12 @@ services:
       - OLLAMA_NUM_THREADS=4
       - HSA_OVERRIDE_GFX_VERSION=11.0.0
 
+    volumes:
+      - $DOCKER_DATA/ollama:/root/.ollama
+
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
-
-    volumes:
-      - $DOCKER_DATA/ollama:/root/.ollama
 
     tmpfs:
       - /tmp:size=512m
@@ -130,11 +106,12 @@ services:
 EOF
 
 # ================= LANCEMENT =================
-info "Lancement des conteneurs..."
+info "Démarrage stack voix + IA..."
 docker compose -f "$COMPOSE_FILE" up -d
 
-success "Stack ROCm lancée (Whisper + Ollama)"
-warn "Swap bloqué + tmpfs actif → TBW SSD/HDD protégé"
+success "Stack prête (Whisper GPU prioritaire + Ollama ROCm)"
 
-info "Whisper API : http://${HOST_IP}:10300"
-info "Ollama API  : http://${HOST_IP}:11434"
+info "Whisper : http://${HOST_IP}:10300"
+info "Ollama  : http://${HOST_IP}:11434"
+
+warn "GPU partagé ROCm → arbitrage dynamique (pas de partition fixe VRAM)"
