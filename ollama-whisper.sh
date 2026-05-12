@@ -54,6 +54,8 @@ services:
       - WHISPER_COMPILE=1
       - NUM_THREADS=6
       - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - CT2_FORCE_FP16=1
+      - WHISPER_COMPUTE_TYPE=float16
 
     volumes:
       - /opt/rocm:/opt/rocm
