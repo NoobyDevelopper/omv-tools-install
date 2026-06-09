@@ -4,7 +4,8 @@
 
 ⚡ INSTALLATION RAPIDE (OMV 8 / RX 7600 XT / ROCm)
 
-`sudo apt update && sudo apt install -y wget unzip && \
+```bash
+sudo apt update && sudo apt install -y wget unzip && \
 rm -rf omv-tools-install && \
 wget -O repo.zip https://github.com/NoobyDevelopper/omv-tools-install/archive/refs/heads/main.zip && \
 unzip repo.zip && \
@@ -12,7 +13,8 @@ rm repo.zip && \
 mv omv-tools-install-main omv-tools-install && \
 cd omv-tools-install && \
 chmod +x launcher.sh && \
-sudo ./launcher.sh`
+sudo ./launcher.sh
+```
 
 ---
 
